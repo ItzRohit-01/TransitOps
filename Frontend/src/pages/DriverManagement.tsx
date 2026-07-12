@@ -1,17 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Filter, 
   Download, 
   Plus, 
-  Sparkles, 
-  AlertTriangle, 
-  Compass, 
-  BookOpen, 
-  ShieldCheck, 
-  Check 
+  X,
+  Search
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
+import { db, auth } from '../firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  addDoc 
+} from 'firebase/firestore';
 
 interface Driver {
   id: string;
@@ -25,76 +29,181 @@ interface Driver {
   vehicle: string;
   image: string;
   trends: number[];
+  expiryDate?: string;
+  contactNumber?: string;
 }
 
 export const DriverManagement: React.FC = () => {
-  // Mock Driver Data
-  const drivers: Driver[] = [
-    {
-      id: 'D-9021',
-      name: 'Alex Thompson',
-      licenseId: 'TX-492-901',
-      category: 'CLASS A',
-      safetyScore: 98,
-      assignment: 'V-102 (Houston Exp)',
-      licenseDetail: 'Class A (Interstate)',
-      status: 'On Trip',
-      vehicle: 'V-102',
-      image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&auto=format&fit=crop',
-      trends: [60, 70, 65, 80, 85, 92, 98]
-    },
-    {
-      id: 'D-8842',
-      name: 'Sarah Jenkins',
-      licenseId: 'CA-112-452',
-      category: 'CLASS B',
-      safetyScore: 92,
-      assignment: 'N/A',
-      licenseDetail: 'Class B (Interstate)',
-      status: 'Available',
-      vehicle: 'N/A',
-      image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&auto=format&fit=crop',
-      trends: [85, 88, 90, 89, 93, 91, 92]
-    },
-    {
-      id: 'D-7710',
-      name: 'Robert Blackwood',
-      licenseId: 'NY-891-220',
-      category: 'CLASS A',
-      safetyScore: 76,
-      assignment: 'V-405 (Maintenance)',
-      licenseDetail: 'Class A (Intrastate)',
-      status: 'Off Duty',
-      vehicle: 'V-405',
-      image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=150&auto=format&fit=crop',
-      trends: [75, 78, 80, 74, 76, 75, 76]
-    },
-    {
-      id: 'D-1104',
-      name: 'James Miller',
-      licenseId: 'IL-230-009',
-      category: 'CLASS C',
-      safetyScore: 42,
-      assignment: 'None',
-      licenseDetail: 'Class C (Intrastate)',
-      status: 'Suspended',
-      vehicle: 'None',
-      image: 'https://images.unsplash.com/photo-1500048993953-d23a436266cf?q=80&w=150&auto=format&fit=crop',
-      trends: [50, 48, 45, 43, 40, 41, 42]
-    }
-  ];
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [selectedId, setSelectedId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const [selectedId, setSelectedId] = useState<string>('D-9021');
+  // Add Driver Form State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newLicense, setNewLicense] = useState('');
+  const [newCategory, setNewCategory] = useState('Class A');
+  const [newExpiry, setNewExpiry] = useState('');
+  const [newContact, setNewContact] = useState('');
+  const [newScore, setNewScore] = useState('90');
+  const [newStatus, setNewStatus] = useState<'AVAILABLE' | 'ON TRIP' | 'SUSPENDED'>('AVAILABLE');
+  const [newError, setNewError] = useState('');
 
-  const selectedDriver = drivers.find(d => d.id === selectedId) || drivers[0];
+  // Fetch Drivers Real-Time
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'drivers'), (snapshot) => {
+      const list: Driver[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          name: data.name || '',
+          licenseId: docSnap.id,
+          category: data.category || 'Class A',
+          safetyScore: data.safetyScore || 90,
+          assignment: data.vehicle && data.vehicle !== 'None' ? `${data.vehicle} (Active)` : 'Unassigned',
+          licenseDetail: `${data.category || 'Class A'} (Interstate)`,
+          status: data.status === 'AVAILABLE' ? 'Available' :
+                  data.status === 'ON TRIP' ? 'On Trip' :
+                  data.status === 'SUSPENDED' ? 'Suspended' : 'Off Duty',
+          vehicle: data.vehicle || 'None',
+          image: data.image || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&auto=format&fit=crop',
+          trends: [85, 88, 90, 89, 93, 91, data.safetyScore || 90],
+          expiryDate: data.expiryDate || '',
+          contactNumber: data.contactNumber || ''
+        });
+      });
+      setDrivers(list);
+      if (list.length > 0 && !selectedId) {
+        setSelectedId(list[0].id);
+      }
+    });
 
-  // Workforce Availability Donut Chart Data
+    return unsubscribe;
+  }, [selectedId]);
+
+  const selectedDriver = drivers.find(d => d.id === selectedId) || drivers[0] || {
+    id: 'None',
+    name: 'No Drivers Selected',
+    licenseId: 'N/A',
+    category: 'N/A',
+    safetyScore: 100,
+    assignment: 'Unassigned',
+    licenseDetail: 'N/A',
+    status: 'Available' as const,
+    vehicle: 'None',
+    image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&auto=format&fit=crop',
+    trends: [100]
+  };
+
+  // Workforce availability donut chart counts
+  const availableCount = drivers.filter(d => d.status === 'Available').length;
+  const onTripCount = drivers.filter(d => d.status === 'On Trip').length;
+  const offDutyCount = drivers.filter(d => d.status === 'Off Duty').length;
+  const suspendedCount = drivers.filter(d => d.status === 'Suspended').length;
+  const totalDriversCount = drivers.length;
+
   const workforceData = [
-    { name: 'Available', value: 128, color: '#10B981' },
-    { name: 'On Trip', value: 256, color: '#3B82F6' },
-    { name: 'Off Duty', value: 86, color: '#94A3B8' },
-    { name: 'Suspended', value: 12, color: '#EF4444' }
+    { name: 'Available', value: availableCount, color: '#10B981' },
+    { name: 'On Trip', value: onTripCount, color: '#3B82F6' },
+    { name: 'Off Duty', value: offDutyCount, color: '#94A3B8' },
+    { name: 'Suspended', value: suspendedCount, color: '#EF4444' }
   ];
+
+  // Expiring licenses within 30 days of July 2026
+  const expiringLicensesCount = drivers.filter(d => {
+    if (!d.expiryDate) return false;
+    const expiry = new Date(d.expiryDate);
+    const now = new Date('2026-07-12');
+    const diffTime = expiry.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 && diffDays <= 30;
+  }).length;
+
+  const avgSafetyScore = drivers.length > 0 
+    ? Math.round(drivers.reduce((acc, curr) => acc + curr.safetyScore, 0) / drivers.length) 
+    : 100;
+
+  // Filter based on search query
+  const filteredDrivers = drivers.filter(d => 
+    d.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    d.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    d.category.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Add Driver handler
+  const handleAddDriver = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setNewError('');
+
+    if (!newLicense || !newName || !newExpiry || !newContact) {
+      setNewError('All required fields must be filled');
+      return;
+    }
+
+    try {
+      const docRef = doc(db, 'drivers', newLicense);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setNewError('Driver with this license number already exists');
+        return;
+      }
+
+      await setDoc(docRef, {
+        name: newName,
+        category: newCategory,
+        expiryDate: newExpiry,
+        contactNumber: newContact,
+        safetyScore: Number(newScore || 90),
+        status: newStatus,
+        vehicle: 'None',
+        image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&auto=format&fit=crop'
+      });
+
+      // Audit Log
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'CREATE_DRIVER',
+        details: `Registered driver ${newName} (${newLicense})`,
+        userEmail: auth.currentUser?.email || 'manager@transitops.global',
+        timestamp: new Date()
+      });
+
+      // Clear & Close
+      setNewName('');
+      setNewLicense('');
+      setNewExpiry('');
+      setNewContact('');
+      setShowAddModal(false);
+    } catch (err: any) {
+      setNewError(err.message || 'Failed to save driver');
+    }
+  };
+
+  // CSV Export
+  const exportToCSV = () => {
+    const headers = ['License ID', 'Name', 'Category', 'Expiry Date', 'Contact Number', 'Safety Score', 'Status', 'Vehicle'];
+    const rows = drivers.map(d => [
+      d.id,
+      d.name,
+      d.category,
+      d.expiryDate || 'N/A',
+      d.contactNumber || 'N/A',
+      d.safetyScore,
+      d.status,
+      d.vehicle
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(',')].concat(rows.map(e => e.map(val => `"${val}"`).join(','))).join('\n');
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "transitops_drivers.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <DashboardLayout>
@@ -109,15 +218,17 @@ export const DriverManagement: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95">
-              <Filter className="w-4 h-4 text-slate-400" />
-              Filter
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95">
+            <button 
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95"
+            >
               <Download className="w-4 h-4 text-slate-400" />
-              Export
+              Export CSV
             </button>
-            <button className="flex items-center gap-2 px-4.5 py-2.5 bg-black hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow-md transition-all active:scale-95">
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 px-4.5 py-2.5 bg-black hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow-md transition-all active:scale-95"
+            >
               <Plus className="w-4 h-4" />
               Add Driver
             </button>
@@ -126,68 +237,46 @@ export const DriverManagement: React.FC = () => {
 
         {/* Top Mini Stats Row */}
         <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-5">
-          {/* Total Drivers */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-3">Total Drivers</span>
             <div className="flex justify-between items-end">
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit">482</span>
-              <span className="text-emerald-500 text-[10px] font-extrabold mb-1">
-                📈 +12% MoM
-              </span>
+              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit">{totalDriversCount}</span>
             </div>
           </div>
 
-          {/* Available */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Available</span>
-            <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block">128</span>
-            <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full" style={{ width: '40%' }}></div>
-            </div>
+            <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block">{availableCount}</span>
           </div>
 
-          {/* On Trip */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">On Trip</span>
-            <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block">256</span>
-            <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-500 rounded-full" style={{ width: '60%' }}></div>
-            </div>
+            <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block">{onTripCount}</span>
           </div>
 
-          {/* Suspended */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Suspended</span>
             <div className="flex justify-between items-baseline">
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit">12</span>
-              <span className="text-[9px] text-rose-500 font-extrabold">🚨 Requires Action</span>
-            </div>
-            <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-rose-500 rounded-full" style={{ width: '15%' }}></div>
+              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit">{suspendedCount}</span>
             </div>
           </div>
 
-          {/* Expiring Licenses */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Expiring Licenses</span>
             <div className="flex justify-between items-baseline">
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit">8</span>
-              <span className="text-[9px] text-amber-500 font-extrabold">⏳ Next 30 Days</span>
-            </div>
-            <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-amber-500 rounded-full" style={{ width: '25%' }}></div>
+              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit">{expiringLicensesCount}</span>
+              <span className="text-[9px] text-amber-500 font-extrabold">⏳ &lt;30 days</span>
             </div>
           </div>
 
-          {/* Avg. Safety Score */}
           <div className="bg-slate-950 text-white rounded-2xl p-5 shadow-md flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Avg. Safety Score</span>
-              <span className="bg-white/10 text-white text-[9px] font-black px-2 py-0.5 rounded shadow">94%</span>
+              <span className="bg-white/10 text-white text-[9px] font-black px-2 py-0.5 rounded shadow">{avgSafetyScore}%</span>
             </div>
             <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 mt-2">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              🛡️ Fleet Excellence
+              🛡️ Safe Workforce
             </span>
           </div>
         </section>
@@ -198,19 +287,18 @@ export const DriverManagement: React.FC = () => {
           {/* Workforce Availability (Left 4 cols) */}
           <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-outfit font-extrabold text-slate-900 text-sm">Workforce Availability</h3>
-              <button className="text-slate-400 hover:text-slate-600 font-extrabold text-xs">•••</button>
+              <h3 className="font-outfit font-extrabold text-slate-900 text-sm">Workforce Status</h3>
             </div>
-            <div className="flex flex-col items-center justify-center relative py-4">
-              <div className="w-40 h-40 relative flex items-center justify-center">
+            <div className="flex flex-col items-center justify-center relative py-2">
+              <div className="w-36 h-36 relative flex items-center justify-center">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={workforceData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={50}
-                      outerRadius={65}
+                      innerRadius={45}
+                      outerRadius={60}
                       paddingAngle={3}
                       dataKey="value"
                     >
@@ -221,108 +309,55 @@ export const DriverManagement: React.FC = () => {
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-black text-slate-900 font-outfit">482</span>
+                  <span className="text-2xl font-black text-slate-900 font-outfit">{totalDriversCount}</span>
                   <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total</span>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-4 text-[10px] font-bold text-slate-500">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Available (128)</span>
+            <div className="space-y-2 mt-4 text-xs font-semibold text-slate-700">
+              <div className="flex justify-between">
+                <span>Available</span>
+                <span className="text-emerald-600 font-bold">{availableCount}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                <span>On Trip (256)</span>
+              <div className="flex justify-between">
+                <span>On Trip</span>
+                <span className="text-blue-600 font-bold">{onTripCount}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                <span>Off Duty (86)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                <span>Suspended (12)</span>
+              <div className="flex justify-between">
+                <span>Suspended</span>
+                <span className="text-rose-600 font-bold">{suspendedCount}</span>
               </div>
             </div>
           </div>
 
-          {/* AI Insights & Predictions (Middle 4 cols) */}
-          <div className="lg:col-span-4 bg-[#1E293B] text-slate-100 rounded-2xl p-6 shadow-md flex flex-col justify-between">
+          {/* Predictor Panel (Middle 4 cols) */}
+          <div className="lg:col-span-4 bg-[#F8F9FC] border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
             <div>
-              <h3 className="font-outfit font-extrabold text-slate-200 text-sm flex items-center gap-2 mb-5">
-                <Sparkles className="w-4.5 h-4.5 text-indigo-400" />
-                AI Insights & Predictions
-              </h3>
-
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-4">Driver Risk Alert</span>
               <div className="space-y-4">
-                {/* Insight 1 */}
-                <div className="flex items-start gap-3 bg-slate-800/40 border border-slate-800/20 rounded-xl p-3">
-                  <div className="bg-emerald-500/10 text-emerald-400 p-1.5 rounded-lg mt-0.5">
-                    <TrendingUpIcon className="w-3.5 h-3.5" />
+                <div className="border border-rose-100 bg-rose-50/50 rounded-xl p-3 flex gap-2.5">
+                  <span className="text-rose-500 shrink-0">⚠️</span>
+                  <div>
+                    <h4 className="text-slate-900 text-xs font-bold">Safety Score Under Threshold</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">David Miller shows score 42% due to speeding telemetry alerts.</p>
                   </div>
-                  <p className="text-xs text-slate-300 font-semibold leading-relaxed">
-                    Driver <span className="text-white font-extrabold">Alex Thompson</span> maintained a 98% safety score over 120 trips, qualifying for the quarterly bonus.
-                  </p>
-                </div>
-
-                {/* Insight 2 */}
-                <div className="flex items-start gap-3 bg-slate-800/40 border border-slate-800/20 rounded-xl p-3">
-                  <div className="bg-amber-500/10 text-amber-400 p-1.5 rounded-lg mt-0.5">
-                    <BookOpen className="w-3.5 h-3.5" />
-                  </div>
-                  <p className="text-xs text-slate-300 font-semibold leading-relaxed">
-                    Driver <span className="text-white font-extrabold">John Doe's</span> Class A license expires in 14 days. Renewal paperwork is pending review.
-                  </p>
-                </div>
-
-                {/* Insight 3 */}
-                <div className="flex items-start gap-3 bg-slate-800/40 border border-slate-800/20 rounded-xl p-3">
-                  <div className="bg-indigo-500/10 text-indigo-400 p-1.5 rounded-lg mt-0.5">
-                    <Compass className="w-3.5 h-3.5" />
-                  </div>
-                  <p className="text-xs text-slate-300 font-semibold leading-relaxed">
-                    Driver <span className="text-white font-extrabold">Sarah Jenkins</span> has been flagged as the most fuel-efficient driver this month with 12% savings.
-                  </p>
                 </div>
               </div>
             </div>
-
-            <button className="w-full mt-5 bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 font-bold text-xs py-2.5 rounded-xl transition-all shadow-sm">
-              View All Intelligence Reports
-            </button>
           </div>
 
-          {/* Compliance Center (Right 4 cols) */}
-          <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <h3 className="font-outfit font-extrabold text-slate-900 text-sm mb-5">Compliance Center</h3>
-              <div className="space-y-4">
-                {/* Event 1 */}
-                <div className="border border-slate-100 rounded-xl p-3.5 space-y-2">
-                  <div className="flex justify-between items-center text-[10px] font-bold">
-                    <span className="text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">CRITICAL</span>
-                    <span className="text-slate-400 font-semibold">2h ago</span>
-                  </div>
-                  <h4 className="text-xs font-black text-slate-800">4 Expired Licenses</h4>
-                  <p className="text-[11px] text-slate-500 font-semibold">Operations halted for affected drivers.</p>
-                </div>
-
-                {/* Event 2 */}
-                <div className="border border-slate-100 rounded-xl p-3.5 space-y-2">
-                  <div className="flex justify-between items-center text-[10px] font-bold">
-                    <span className="text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">WARNING</span>
-                    <span className="text-slate-400 font-semibold">5h ago</span>
-                  </div>
-                  <h4 className="text-xs font-black text-slate-800">Incident Reported: V-109</h4>
-                  <p className="text-[11px] text-slate-500 font-semibold">Hard braking event detected by telematics.</p>
-                </div>
-
-                {/* Event 3 */}
-                <div className="border border-slate-100 rounded-xl p-3.5 space-y-1 bg-[#F8F9FC]/60">
-                  <h4 className="text-xs font-black text-slate-800">Medical Review Pending</h4>
-                  <p className="text-[11px] text-slate-500 font-semibold">12 drivers require biennial checkups.</p>
-                </div>
+          {/* Compliance Alerts (Right 4 cols) */}
+          <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
+            <h3 className="font-outfit font-extrabold text-slate-900 text-sm mb-4">Compliance Center</h3>
+            <div className="space-y-3 text-xs">
+              <div className="border border-slate-100 rounded-xl p-3 flex justify-between">
+                <span>Total Active Licenses</span>
+                <span className="font-bold text-slate-900">{drivers.filter(d => d.status !== 'Suspended').length}</span>
+              </div>
+              <div className="border border-slate-100 rounded-xl p-3 flex justify-between">
+                <span>Suspended Logs</span>
+                <span className="font-bold text-rose-500">{suspendedCount}</span>
               </div>
             </div>
           </div>
@@ -337,15 +372,19 @@ export const DriverManagement: React.FC = () => {
             <div className="flex justify-between items-center mb-5">
               <h3 className="font-outfit font-extrabold text-slate-900 text-sm">Driver Registry</h3>
               <div className="flex items-center gap-3">
-                <span className="text-slate-400 text-xs font-semibold">Showing 1-10 of 482</span>
-                <div className="flex gap-1">
-                  <button className="px-2.5 py-1 text-xs border border-slate-200 hover:bg-slate-50 font-bold rounded-lg text-slate-600 disabled:opacity-50" disabled>&lt;</button>
-                  <button className="px-2.5 py-1 text-xs border border-slate-200 hover:bg-slate-50 font-bold rounded-lg text-slate-600">&gt;</button>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search drivers..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 bg-[#F8F9FC] border border-slate-200 text-xs font-semibold rounded-lg w-44 placeholder-slate-400 focus:outline-none"
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -358,7 +397,7 @@ export const DriverManagement: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
-                  {drivers.map((driver) => {
+                  {filteredDrivers.map((driver) => {
                     const isSelected = selectedId === driver.id;
                     return (
                       <tr 
@@ -411,17 +450,11 @@ export const DriverManagement: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column (Driver Profile & Activities, 4 cols) */}
+          {/* Right Column (Driver Profile) */}
           <div className="lg:col-span-4 space-y-8">
-            
-            {/* Driver Profile */}
             <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-6">
-              <div className="flex justify-between items-center">
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Driver Profile</span>
-                <button className="text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors">View Detail</button>
-              </div>
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Driver Profile</span>
 
-              {/* Driver identity */}
               <div className="flex flex-col items-center text-center space-y-3">
                 <div className="relative">
                   <img 
@@ -429,9 +462,6 @@ export const DriverManagement: React.FC = () => {
                     alt={selectedDriver.name}
                     className="w-20 h-20 rounded-full object-cover border-4 border-slate-50 shadow-md"
                   />
-                  <span className="absolute bottom-0 right-0 bg-blue-500 text-white p-1 rounded-full border-2 border-white shadow">
-                    <Check className="w-2.5 h-2.5" />
-                  </span>
                 </div>
                 <div>
                   <h4 className="text-base font-black text-slate-900 font-outfit">{selectedDriver.name}</h4>
@@ -439,7 +469,6 @@ export const DriverManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Status & Vehicle row */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-50 rounded-xl p-3 text-center">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Status</span>
@@ -447,118 +476,146 @@ export const DriverManagement: React.FC = () => {
                     {selectedDriver.status}
                   </span>
                 </div>
-
                 <div className="bg-slate-50 rounded-xl p-3 text-center">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Vehicle</span>
-                  <span className="text-xs font-black text-slate-800 mt-1 block font-mono">
+                  <span className="text-xs font-black text-slate-950 mt-1 block">
                     {selectedDriver.vehicle}
                   </span>
                 </div>
               </div>
-
-              {/* Performance Score */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-xs font-extrabold text-slate-800">
-                  <span>PERFORMANCE SCORE</span>
-                  <span className="text-emerald-500 font-black text-sm">{selectedDriver.safetyScore}%</span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-emerald-500 rounded-full" 
-                    style={{ width: `${selectedDriver.safetyScore}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Trends bar chart */}
-              <div className="pt-2">
-                <div className="h-12 flex items-end gap-1.5 px-2">
-                  {selectedDriver.trends.map((score, idx) => (
-                    <div 
-                      key={idx}
-                      className={`flex-1 rounded-xs transition-all duration-300 ${
-                        idx === selectedDriver.trends.length - 1 
-                          ? 'bg-slate-950' 
-                          : score >= 90 
-                          ? 'bg-blue-500' 
-                          : score >= 70 
-                          ? 'bg-blue-300' 
-                          : 'bg-blue-200'
-                      }`}
-                      style={{ height: `${score}%` }}
-                    ></div>
-                  ))}
-                </div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase text-center block mt-3">
-                  Trip safety score trends (Last 7 days)
-                </span>
-              </div>
             </div>
-
-            {/* Recent Activity */}
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
-              <h3 className="font-outfit font-extrabold text-slate-900 text-sm mb-5">Recent Activity</h3>
-              <div className="space-y-5">
-                {/* Act 1 */}
-                <div className="flex gap-3 items-start">
-                  <div className="bg-slate-900 text-white p-1 rounded-lg shrink-0 mt-0.5">
-                    <Compass className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-black text-slate-850">New Assignment</h5>
-                    <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Alex Thompson assigned to Route Houston-Exp</p>
-                    <span className="text-[9px] text-slate-400 font-bold block mt-1">12 min ago</span>
-                  </div>
-                </div>
-
-                {/* Act 2 */}
-                <div className="flex gap-3 items-start">
-                  <div className="bg-emerald-50 text-emerald-600 p-1 rounded-lg shrink-0 mt-0.5">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-black text-slate-850">License Renewed</h5>
-                    <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Marcus Miller successfully updated CA license</p>
-                    <span className="text-[9px] text-slate-400 font-bold block mt-1">2 hours ago</span>
-                  </div>
-                </div>
-
-                {/* Act 3 */}
-                <div className="flex gap-3 items-start">
-                  <div className="bg-amber-50 text-amber-600 p-1 rounded-lg shrink-0 mt-0.5">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-black text-slate-850">Compliance Alert</h5>
-                    <p className="text-[10px] text-slate-500 font-semibold mt-0.5">John Doe's medical certificate expiring in 5 days</p>
-                    <span className="text-[9px] text-slate-400 font-bold block mt-1">5 hours ago</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
           </div>
 
         </section>
+
+        {/* Add Driver Overlay Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs font-inter">
+            <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-lg shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                <h3 className="font-outfit font-black text-slate-900 text-lg">Add New Driver Profile</h3>
+                <button 
+                  onClick={() => setShowAddModal(false)}
+                  className="text-slate-400 hover:text-slate-650 p-1.5 hover:bg-slate-50 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddDriver} className="p-6 space-y-4 text-xs font-semibold text-slate-700">
+                {newError && (
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl">
+                    {newError}
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-slate-400">Driver Full Name *</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Elena Rodriguez" 
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl placeholder-slate-400 focus:outline-none focus:border-slate-800"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-400">License Number (ID) *</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. DL-34012" 
+                      value={newLicense}
+                      onChange={(e) => setNewLicense(e.target.value.toUpperCase())}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl placeholder-slate-400 focus:outline-none focus:border-slate-800 font-extrabold text-slate-900"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-400">License Class *</label>
+                    <select 
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800 text-slate-950"
+                    >
+                      <option value="Class A">Class A</option>
+                      <option value="Class B">Class B</option>
+                      <option value="Class C">Class C</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-400">License Expiry Date *</label>
+                    <input 
+                      type="date" 
+                      value={newExpiry}
+                      onChange={(e) => setNewExpiry(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800 text-slate-950 font-bold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-400">Contact Number *</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. +1 (555) 019-2831" 
+                      value={newContact}
+                      onChange={(e) => setNewContact(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl placeholder-slate-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-400">Initial Safety Score (0-100)</label>
+                    <input 
+                      type="number" 
+                      placeholder="90" 
+                      value={newScore}
+                      onChange={(e) => setNewScore(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl placeholder-slate-400 focus:outline-none focus:border-slate-800"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-400">Workforce Status</label>
+                    <select 
+                      value={newStatus}
+                      onChange={(e) => setNewStatus(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-800 text-slate-950"
+                    >
+                      <option value="AVAILABLE">Available</option>
+                      <option value="ON TRIP">On Trip</option>
+                      <option value="SUSPENDED">Suspended</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button 
+                    type="button" 
+                    onClick={() => setShowAddModal(false)}
+                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="px-5 py-2 bg-black hover:bg-slate-900 text-white rounded-xl font-extrabold shadow-md"
+                  >
+                    Save Profile
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
       </div>
     </DashboardLayout>
   );
 };
-
-// Internal icon proxy for unused compile errors
-const TrendingUpIcon: React.FC<any> = (props) => (
-  <svg 
-    xmlns="http://www.w3.org/2000/svg" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2.5" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    {...props}
-  >
-    <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-    <polyline points="16 7 22 7 22 13" />
-  </svg>
-);

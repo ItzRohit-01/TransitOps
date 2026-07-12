@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   LayoutDashboard, 
   Truck, 
@@ -24,12 +25,12 @@ interface DashboardLayoutProps {
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
+  const { userRole, userDisplayName, currentUser, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
   const currentPath = location.pathname;
 
-  const userRole = localStorage.getItem('userRole') || 'Manager';
   const isDispatcher = userRole === 'Dispatcher';
 
   const isFleetView = currentPath === '/fleet';
@@ -84,25 +85,19 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const [showProfileMenu, setShowProfileMenu] = React.useState(false);
 
   // Determine profile information dynamically based on user role
-  let displayProfileName = 'Marcus Chen';
+  let displayProfileName = userDisplayName || 'Marcus Chen';
   let displayProfileTitle = 'Fleet Director';
-  let displayProfileEmail = 'manager@transitops.global';
+  let displayProfileEmail = currentUser?.email || 'manager@transitops.global';
   let displayProfileImage = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop';
 
   if (userRole === 'Dispatcher') {
-    displayProfileName = 'Alexander Sterling';
     displayProfileTitle = 'Lead Dispatcher';
-    displayProfileEmail = 'dispatcher@transitops.global';
     displayProfileImage = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=100&auto=format&fit=crop';
   } else if (userRole === 'Safety') {
-    displayProfileName = 'Sarah Jenkins';
     displayProfileTitle = 'Safety Compliance';
-    displayProfileEmail = 'safety@transitops.global';
     displayProfileImage = 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop';
   } else if (userRole === 'Analyst') {
-    displayProfileName = 'David Miller';
     displayProfileTitle = 'Financial Analyst';
-    displayProfileEmail = 'analyst@transitops.global';
     displayProfileImage = 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=100&auto=format&fit=crop';
   }
 
@@ -214,10 +209,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                 <div className="text-[10px] text-slate-500 font-semibold">{displayProfileTitle}</div>
                 <div className="text-[10px] text-slate-400 font-medium">{displayProfileEmail}</div>
               </div>
-              <div className="border-t border-slate-100 pt-2">
+              <div className="pt-2 border-t border-slate-100">
                 <button 
-                  onClick={() => {
-                    localStorage.removeItem('userRole');
+                  onClick={async () => {
+                    await logout();
                     navigate('/login');
                   }}
                   className="w-full flex items-center gap-2 py-1.5 px-2 hover:bg-slate-50 rounded-lg text-rose-600 font-extrabold transition-colors text-left"

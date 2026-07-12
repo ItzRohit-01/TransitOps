@@ -1,21 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Check, 
   AlertCircle
 } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
+import { db, auth } from '../firebase';
+import { collection, onSnapshot, doc, updateDoc, addDoc } from 'firebase/firestore';
 
 interface MockVehicle {
   id: string;
   name: string;
-  status: 'Available' | 'On Trip' | 'In Shop' | 'Retired';
+  status: string;
   details: string;
 }
 
 interface MockDriver {
   id: string;
   name: string;
-  status: 'Available' | 'On Trip' | 'Suspended';
+  status: string;
   licenseStatus: 'Valid' | 'Expired';
   licenseExpiry: string;
   details: string;
@@ -29,77 +31,147 @@ interface MockTrip {
   cargo: string;
   distance: string;
   eta: string;
-  status: 'Draft' | 'Ready' | 'Dispatched' | 'In Transit' | 'Completed';
+  status: string;
+  statusSub: string;
   driver?: string;
+  driverId?: string;
   vehicle?: string;
+  vehicleId?: string;
   progress: number;
 }
 
 export const DispatcherDashboard: React.FC = () => {
-  // Master Lists for Assignment Center
-  const [vehicles, setVehicles] = useState<MockVehicle[]>([
-    { id: 'V-105', name: 'Volvo VNL 640', status: 'Available', details: 'Reg: TRANS-105 • Diesel' },
-    { id: 'V-118', name: 'Kenworth T680', status: 'Available', details: 'Reg: TRANS-991 • Diesel' },
-    { id: 'V-202', name: 'Freightliner C-12', status: 'Available', details: 'Reg: TRANS-772 • EV Hybrid' },
-    { id: 'V-305', name: 'Peterbilt 579', status: 'In Shop', details: 'Maintenance Pending' },
-    { id: 'V-902', name: 'Ford Transit', status: 'Retired', details: 'Decommissioned' },
-    { id: 'V-109', name: 'Mack Anthem', status: 'On Trip', details: 'Active Route CHI-DET' }
-  ]);
+  const [vehicles, setVehicles] = useState<MockVehicle[]>([]);
+  const [drivers, setDrivers] = useState<MockDriver[]>([]);
+  const [trips, setTrips] = useState<MockTrip[]>([]);
 
-  const [drivers, setDrivers] = useState<MockDriver[]>([
-    { id: 'D-9021', name: 'Marcus Chen', status: 'Available', licenseStatus: 'Valid', licenseExpiry: '2026-10-15', details: 'Class A' },
-    { id: 'D-8042', name: 'Sarah Jenkins', status: 'Available', licenseStatus: 'Valid', licenseExpiry: '2026-09-01', details: 'Class B' },
-    { id: 'D-7721', name: 'Robert Jenkins', status: 'Available', licenseStatus: 'Valid', licenseExpiry: '2026-12-10', details: 'Class A' },
-    { id: 'D-5510', name: 'David Miller', status: 'Suspended', licenseStatus: 'Valid', licenseExpiry: '2027-02-14', details: 'Suspended' },
-    { id: 'D-1102', name: 'John Doe', status: 'Available', licenseStatus: 'Expired', licenseExpiry: '2026-06-01', details: 'Expired Class A' },
-    { id: 'D-6421', name: 'Elena Rodriguez', status: 'On Trip', licenseStatus: 'Valid', licenseExpiry: '2026-11-20', details: 'Active Route' }
-  ]);
+  const [selectedTripId, setSelectedTripId] = useState<string>('');
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
+  const [selectedDriverId, setSelectedDriverId] = useState<string>('');
 
-  // Initial Trip pool
-  const [trips, setTrips] = useState<MockTrip[]>([
-    { id: 'TR-3021', route: 'CHI ➜ DET', source: 'Chicago Depot 4', destination: 'Detroit Terminal West', cargo: '18,500 lbs', distance: '480 km', eta: '14:45 PM', status: 'In Transit', driver: 'Robert Jenkins', vehicle: 'Freightliner C-12', progress: 85 },
-    { id: 'TR-3025', route: 'AUS ➔ HOU', source: 'Austin Depot 2', destination: 'Houston Port Gate B', cargo: '12,200 lbs', distance: '260 km', eta: '16:30 PM', status: 'Dispatched', driver: 'Elena Rodriguez', vehicle: 'Mack Anthem', progress: 45 },
-    { id: 'TR-2908', route: 'DEN ➜ SLC', source: 'Denver Hub 4', destination: 'Salt Lake Dock A', cargo: '24,000 lbs', distance: '820 km', eta: '19:15 PM', status: 'Draft', progress: 0 }
-  ]);
+  const [activeDetailsId, setActiveDetailsId] = useState<string>('');
 
-  // Dynamic selector values for Assignment form
-  const [selectedTripId, setSelectedTripId] = useState<string>('TR-2908');
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('V-105');
-  const [selectedDriverId, setSelectedDriverId] = useState<string>('D-9021');
-
-  // Selected Trip details panel ID
-  const [activeDetailsId, setActiveDetailsId] = useState<string>('TR-3021');
-
-  // Validation/Alert messages state
   const [validationError, setValidationError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Activity Log
-  const [activityFeed, setActivityFeed] = useState<string[]>([
-    '14:22 PM - Trip #TR-3021 Dispatched (Driver: Robert Jenkins)',
-    '14:15 PM - Driver Elena Rodriguez assigned to Vehicle V-109',
-    '13:50 PM - New Draft Trip #TR-2908 created in pipeline'
-  ]);
+  const [activityFeed, setActivityFeed] = useState<string[]>([]);
 
-  // Handle move Kanban trip state
-  const moveTrip = (tripId: string, nextStatus: MockTrip['status']) => {
-    setTrips(prev => prev.map(t => {
-      if (t.id === tripId) {
-        return {
-          ...t,
-          status: nextStatus,
-          progress: nextStatus === 'Completed' ? 100 : nextStatus === 'In Transit' ? 50 : nextStatus === 'Dispatched' ? 10 : t.progress
-        };
+  useEffect(() => {
+    const unsubTrips = onSnapshot(collection(db, 'trips'), (snapshot) => {
+      const list: MockTrip[] = [];
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          route: d.routeCode || 'N/A',
+          source: d.source || 'N/A',
+          destination: d.destination || 'N/A',
+          cargo: d.cargo || 'N/A',
+          distance: d.distance || '---',
+          eta: d.eta || 'N/A',
+          status: d.status || 'DRAFT',
+          statusSub: d.statusSub || 'Draft',
+          driver: d.driverName,
+          driverId: d.driverId,
+          vehicle: d.vehicleName,
+          vehicleId: d.vehicleId,
+          progress: d.progress || 0
+        });
+      });
+      setTrips(list);
+      if (list.length > 0 && !activeDetailsId) {
+        setActiveDetailsId(list[0].id);
       }
-      return t;
-    }));
-    
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setActivityFeed(prev => [`${timeStr} - Trip #${tripId} state updated to ${nextStatus}`, ...prev]);
+      
+      const draftTrips = list.filter(t => t.status === 'DRAFT' && !t.driver);
+      if (draftTrips.length > 0 && !selectedTripId) setSelectedTripId(draftTrips[0].id);
+    });
+
+    const unsubDrivers = onSnapshot(collection(db, 'drivers'), (snapshot) => {
+      const list: MockDriver[] = [];
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        // check expiry
+        const isExpired = d.expiryDate && new Date(d.expiryDate) < new Date();
+        list.push({
+          id: docSnap.id,
+          name: d.name || 'Unknown',
+          status: d.status || 'Available',
+          licenseStatus: isExpired ? 'Expired' : 'Valid',
+          licenseExpiry: d.expiryDate || 'N/A',
+          details: d.category || 'Class A'
+        });
+      });
+      setDrivers(list);
+      const availDrivers = list.filter(d => d.status.toUpperCase() === 'AVAILABLE' || d.status.toUpperCase() === 'AVAILABLE');
+      if (availDrivers.length > 0 && !selectedDriverId) setSelectedDriverId(availDrivers[0].id);
+    });
+
+    const unsubVehicles = onSnapshot(collection(db, 'vehicles'), (snapshot) => {
+      const list: MockVehicle[] = [];
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          name: d.model || 'Unknown',
+          status: d.status || 'Available',
+          details: d.type || 'Diesel'
+        });
+      });
+      setVehicles(list);
+      const availVehicles = list.filter(v => v.status.toUpperCase() === 'AVAILABLE' || v.status.toUpperCase() === 'AVAILABLE');
+      if (availVehicles.length > 0 && !selectedVehicleId) setSelectedVehicleId(availVehicles[0].id);
+    });
+
+    const unsubLogs = onSnapshot(collection(db, 'auditLogs'), (snapshot) => {
+      const logs: string[] = [];
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.timestamp) {
+           const timeStr = d.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+           logs.push(`${timeStr} - ${d.details}`);
+        }
+      });
+      setActivityFeed(logs.slice(0, 10)); // Top 10
+    });
+
+    return () => { unsubTrips(); unsubDrivers(); unsubVehicles(); unsubLogs(); };
+  }, []);
+
+  const moveTrip = async (tripId: string, nextStatus: string) => {
+    try {
+      let statusSub = 'Updated';
+      let progress = 0;
+      
+      const targetTrip = trips.find(t => t.id === tripId);
+      if (!targetTrip) return;
+
+      if (nextStatus === 'ON SCHEDULE') { statusSub = 'In Transit'; progress = 10; }
+      if (nextStatus === 'COMPLETED') { statusSub = 'Completed'; progress = 100; }
+      if (nextStatus === 'CANCELLED') { statusSub = 'Cancelled'; progress = 0; }
+      if (nextStatus === 'DRAFT') { statusSub = 'Ready'; progress = 5; }
+      
+      await updateDoc(doc(db, 'trips', tripId), { status: nextStatus, statusSub, progress });
+      
+      if (nextStatus === 'COMPLETED' || nextStatus === 'CANCELLED') {
+        if (targetTrip.driverId) await updateDoc(doc(db, 'drivers', targetTrip.driverId), { status: 'AVAILABLE' });
+        if (targetTrip.vehicleId) await updateDoc(doc(db, 'vehicles', targetTrip.vehicleId), { status: 'AVAILABLE' });
+      }
+
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'KANBAN_MOVE',
+        details: `Trip #${tripId} moved to ${nextStatus}`,
+        userEmail: auth.currentUser?.email || 'dispatcher@transitops.global',
+        timestamp: new Date()
+      });
+    } catch(err) {
+       console.error(err);
+    }
   };
 
+
   // Assign & Dispatch Logic (Enforcing Business Rules)
-  const handleAssignAndDispatch = (e: React.FormEvent) => {
+  const handleAssignAndDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
     setSuccessMsg(null);
@@ -113,78 +185,72 @@ export const DispatcherDashboard: React.FC = () => {
       return;
     }
 
-    // Rule 1: Vehicle In Shop
-    if (targetVehicle.status === 'In Shop') {
+    if (targetVehicle.status.toUpperCase() === 'IN SHOP' || targetVehicle.status.toUpperCase() === 'MAINTENANCE') {
       setValidationError(`Vehicle ${targetVehicle.name} is currently In Shop for maintenance.`);
       return;
     }
 
-    // Rule 2: Vehicle Retired
-    if (targetVehicle.status === 'Retired') {
+    if (targetVehicle.status.toUpperCase() === 'RETIRED') {
       setValidationError(`Vehicle ${targetVehicle.name} is Retired and cannot be dispatched.`);
       return;
     }
 
-    // Rule 3: Driver Suspended
-    if (targetDriver.status === 'Suspended') {
+    if (targetDriver.status.toUpperCase() === 'SUSPENDED') {
       setValidationError(`Driver ${targetDriver.name} is currently Suspended.`);
       return;
     }
 
-    // Rule 4: Driver License Expired
     if (targetDriver.licenseStatus === 'Expired') {
       setValidationError(`Driver ${targetDriver.name} has an Expired license.`);
       return;
     }
 
-    // Rule 5: Vehicle already On Trip
-    if (targetVehicle.status === 'On Trip') {
+    if (targetVehicle.status.toUpperCase() === 'ON TRIP') {
       setValidationError(`Vehicle ${targetVehicle.name} is already On Trip.`);
       return;
     }
 
-    // Rule 6: Driver already On Trip
-    if (targetDriver.status === 'On Trip') {
+    if (targetDriver.status.toUpperCase() === 'ON TRIP') {
       setValidationError(`Driver ${targetDriver.name} is already On Trip.`);
       return;
     }
 
-    // All rules pass ➔ Dispatch
-    setTrips(prev => prev.map(t => {
-      if (t.id === selectedTripId) {
-        return {
-          ...t,
-          status: 'Dispatched',
-          vehicle: targetVehicle.name,
-          driver: targetDriver.name,
-          progress: 10
-        };
-      }
-      return t;
-    }));
+    try {
+      await updateDoc(doc(db, 'trips', selectedTripId), {
+        status: 'ON SCHEDULE',
+        statusSub: 'Dispatched',
+        progress: 10,
+        driverName: targetDriver.name,
+        driverId: targetDriver.id,
+        vehicleName: targetVehicle.name,
+        vehicleId: targetVehicle.id
+      });
 
-    // Update statuses to "On Trip"
-    setVehicles(prev => prev.map(v => v.id === selectedVehicleId ? { ...v, status: 'On Trip' } : v));
-    setDrivers(prev => prev.map(d => d.id === selectedDriverId ? { ...d, status: 'On Trip' } : d));
+      await updateDoc(doc(db, 'vehicles', selectedVehicleId), { status: 'ON TRIP' });
+      await updateDoc(doc(db, 'drivers', selectedDriverId), { status: 'ON TRIP' });
 
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setActivityFeed(prev => [
-      `${timeStr} - Trip #${selectedTripId} successfully assigned to ${targetDriver.name} (Vehicle: ${targetVehicle.name})`,
-      ...prev
-    ]);
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'DISPATCH_TRIP',
+        details: `Trip #${selectedTripId} dispatched to ${targetDriver.name} in ${targetVehicle.id}`,
+        userEmail: auth.currentUser?.email || 'dispatcher@transitops.global',
+        timestamp: new Date()
+      });
 
-    setSuccessMsg(`Successfully dispatched Trip #${selectedTripId}!`);
-    setActiveDetailsId(selectedTripId);
+      setSuccessMsg(`Successfully dispatched Trip #${selectedTripId}!`);
+      setActiveDetailsId(selectedTripId);
+    } catch(err) {
+      setValidationError('Failed to dispatch trip.');
+    }
   };
 
   // Helper count logic for utilization cards
-  const availableVehiclesCount = vehicles.filter(v => v.status === 'Available').length;
-  const availableDriversCount = drivers.filter(d => d.status === 'Available').length;
-  const activeTripsCount = trips.filter(t => t.status === 'In Transit').length;
-  const pendingTripsCount = trips.filter(t => t.status === 'Dispatched' || t.status === 'Ready').length;
-  const delayedTripsCount = trips.filter(t => t.id === 'TR-3021').length; // static delayed trip CHI-DET
+  const availableVehiclesCount = vehicles.filter(v => v.status.toUpperCase() === 'AVAILABLE').length;
+  const availableDriversCount = drivers.filter(d => d.status.toUpperCase() === 'AVAILABLE').length;
+  const activeTripsCount = trips.filter(t => t.status === 'ON SCHEDULE').length;
+  const pendingTripsCount = trips.filter(t => t.status === 'DRAFT').length;
+  const delayedTripsCount = trips.filter(t => t.status === 'DELAYED').length; // static delayed trip CHI-DET
 
-  const selectedPanelTrip = trips.find(t => t.id === activeDetailsId) || trips[0];
+  const selectedPanelTrip = trips.find(t => t.id === activeDetailsId) || trips[0] || null;
 
   return (
     <DashboardLayout>
@@ -305,7 +371,7 @@ export const DispatcherDashboard: React.FC = () => {
                 >
                   {drivers.map(d => (
                     <option key={d.id} value={d.id}>
-                      {d.id} - {d.name} ({d.status === 'Available' && d.licenseStatus === 'Expired' ? 'Expired' : d.status})
+                      {d.id} - {d.name} ({d.status.toUpperCase() === 'AVAILABLE' && d.licenseStatus === 'Expired' ? 'Expired' : d.status})
                     </option>
                   ))}
                 </select>
@@ -347,13 +413,13 @@ export const DispatcherDashboard: React.FC = () => {
             {/* Column 1: Draft */}
             <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 min-h-[180px] space-y-3">
               <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 block pb-1 border-b border-slate-200/60">Draft</span>
-              {trips.filter(t => t.status === 'Draft').map(t => (
+              {trips.filter(t => t.status === 'DRAFT' && !t.driver).map(t => (
                 <div key={t.id} onClick={() => setActiveDetailsId(t.id)} className="bg-white border border-slate-150 rounded-lg p-3 cursor-pointer shadow-xs space-y-2.5">
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="font-black text-slate-900">#{t.id}</span>
                     <span className="text-slate-400 font-bold">{t.route}</span>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); moveTrip(t.id, 'Ready'); }} className="w-full text-center py-1 bg-slate-900 hover:bg-slate-950 text-white rounded text-[9px] font-bold">
+                  <button onClick={(e) => { e.stopPropagation(); moveTrip(t.id, 'DRAFT'); }} className="w-full text-center py-1 bg-slate-900 hover:bg-slate-950 text-white rounded text-[9px] font-bold">
                     ➤ Ready
                   </button>
                 </div>
@@ -363,13 +429,13 @@ export const DispatcherDashboard: React.FC = () => {
             {/* Column 2: Ready */}
             <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 min-h-[180px] space-y-3">
               <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 block pb-1 border-b border-slate-200/60">Ready</span>
-              {trips.filter(t => t.status === 'Ready').map(t => (
+              {trips.filter(t => t.status === 'DRAFT' && t.driver).map(t => (
                 <div key={t.id} onClick={() => setActiveDetailsId(t.id)} className="bg-white border border-slate-150 rounded-lg p-3 cursor-pointer shadow-xs space-y-2.5">
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="font-black text-slate-900">#{t.id}</span>
                     <span className="text-slate-400 font-bold">{t.route}</span>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); moveTrip(t.id, 'Dispatched'); }} className="w-full text-center py-1 bg-slate-900 hover:bg-slate-950 text-white rounded text-[9px] font-bold">
+                  <button onClick={(e) => { e.stopPropagation(); moveTrip(t.id, 'ON SCHEDULE'); }} className="w-full text-center py-1 bg-slate-900 hover:bg-slate-950 text-white rounded text-[9px] font-bold">
                     ➤ Dispatch
                   </button>
                 </div>
@@ -379,13 +445,13 @@ export const DispatcherDashboard: React.FC = () => {
             {/* Column 3: Dispatched */}
             <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 min-h-[180px] space-y-3">
               <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 block pb-1 border-b border-slate-200/60">Dispatched</span>
-              {trips.filter(t => t.status === 'Dispatched').map(t => (
+              {trips.filter(t => t.status === 'ON SCHEDULE' && t.progress < 50).map(t => (
                 <div key={t.id} onClick={() => setActiveDetailsId(t.id)} className="bg-white border border-slate-150 rounded-lg p-3 cursor-pointer shadow-xs space-y-2.5">
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="font-black text-slate-900">#{t.id}</span>
                     <span className="text-slate-400 font-bold">{t.route}</span>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); moveTrip(t.id, 'In Transit'); }} className="w-full text-center py-1 bg-[#4F5B73] hover:bg-[#3E4A61] text-white rounded text-[9px] font-bold">
+                  <button onClick={(e) => { e.stopPropagation(); updateDoc(doc(db, 'trips', t.id), { progress: 50 }); }} className="w-full text-center py-1 bg-[#4F5B73] hover:bg-[#3E4A61] text-white rounded text-[9px] font-bold">
                     ➤ In Transit
                   </button>
                 </div>
@@ -395,7 +461,7 @@ export const DispatcherDashboard: React.FC = () => {
             {/* Column 4: In Transit */}
             <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 min-h-[180px] space-y-3">
               <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 block pb-1 border-b border-slate-200/60">In Transit</span>
-              {trips.filter(t => t.status === 'In Transit').map(t => (
+              {trips.filter(t => t.status === 'ON SCHEDULE').map(t => (
                 <div key={t.id} onClick={() => setActiveDetailsId(t.id)} className="bg-white border border-slate-150 rounded-lg p-3 cursor-pointer shadow-xs space-y-2.5">
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="font-black text-slate-900">#{t.id}</span>
@@ -404,7 +470,7 @@ export const DispatcherDashboard: React.FC = () => {
                   <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden my-1">
                     <div className="h-full bg-amber-500 rounded-full" style={{ width: `${t.progress}%` }}></div>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); moveTrip(t.id, 'Completed'); }} className="w-full text-center py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[9px] font-bold">
+                  <button onClick={(e) => { e.stopPropagation(); moveTrip(t.id, 'COMPLETED'); }} className="w-full text-center py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[9px] font-bold">
                     ➤ Complete
                   </button>
                 </div>
@@ -414,7 +480,7 @@ export const DispatcherDashboard: React.FC = () => {
             {/* Column 5: Completed */}
             <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 min-h-[180px] space-y-3">
               <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 block pb-1 border-b border-slate-200/60">Completed</span>
-              {trips.filter(t => t.status === 'Completed').map(t => (
+              {trips.filter(t => t.status === 'COMPLETED').map(t => (
                 <div key={t.id} onClick={() => setActiveDetailsId(t.id)} className="bg-white border border-slate-150 rounded-lg p-3 cursor-pointer shadow-xs space-y-1">
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="font-black text-slate-900">#{t.id}</span>
@@ -476,8 +542,8 @@ export const DispatcherDashboard: React.FC = () => {
                       </td>
                       <td className="py-4 text-right">
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded ${
-                          trip.status === 'In Transit' ? 'bg-amber-50 text-amber-500' :
-                          trip.status === 'Completed' ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-100 text-slate-500'
+                          (trip.status === 'ON SCHEDULE' || trip.status === 'DELAYED') ? 'bg-amber-50 text-amber-500' :
+                          trip.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-100 text-slate-500'
                         }`}>
                           {trip.status.toUpperCase()}
                         </span>
@@ -590,6 +656,8 @@ export const DispatcherDashboard: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {selectedPanelTrip && (
+              <>
               {/* Trip stats */}
               <div className="space-y-4 text-xs font-semibold text-slate-700">
                 <div className="flex justify-between">
@@ -650,6 +718,8 @@ export const DispatcherDashboard: React.FC = () => {
                   </div>
                 </div>
               </div>
+              </>
+              )}
             </div>
           </div>
 

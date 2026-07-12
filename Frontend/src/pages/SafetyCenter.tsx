@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
+import { db, auth } from '../firebase';
+import { collection, onSnapshot, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from 'recharts';
 
 interface Incident {
@@ -40,119 +42,157 @@ interface DriverRisk {
 }
 
 export const SafetyCenter: React.FC = () => {
-  // Incident state
-  const [incidents, setIncidents] = useState<Incident[]>([
-    { id: 'INC-7021', driver: 'Robert Jenkins', vehicle: 'V-202', type: 'Speeding Violation', severity: 'Medium', date: '2026-07-12', status: 'Investigating', notes: 'Speed limit exceeded by 15 mph in I-94 corridor corridor zone. Warning sent.' },
-    { id: 'INC-7022', driver: 'John Doe', vehicle: 'V-118', type: 'Hard Braking Event', severity: 'Low', date: '2026-07-12', status: 'Open', notes: 'G-force sensor triggered decelerating warning. Driver logs under review.' },
-    { id: 'INC-7023', driver: 'Elena Rodriguez', vehicle: 'V-109', type: 'Critical Engine Heat Alert', severity: 'High', date: '2026-07-11', status: 'Resolved', notes: 'Cooling fluid low, route halted. Vehicle serviced in shop.' },
-    { id: 'INC-7024', driver: 'David Miller', vehicle: 'V-305', type: 'Unlicensed Driving Attempt', severity: 'Critical', date: '2026-07-10', status: 'Closed', notes: 'Attempted dispatcher scheduling while suspended. Logged in audit feed.' }
-  ]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [activityFeed, setActivityFeed] = useState<string[]>([]);
 
-  // Complaint state
-  const [complaints, setComplaints] = useState<Complaint[]>([
-    { id: 'CMP-1025', driver: 'Sarah Jenkins', category: 'Dispatcher Scheduling Conflict', priority: 'Medium', date: '2026-07-12', status: 'Pending', description: 'Assigned route exceeds maximum legal daily log hours. Review needed.' },
-    { id: 'CMP-1026', driver: 'Robert Jenkins', category: 'Cabin AC System Failure', priority: 'High', date: '2026-07-11', status: 'Escalated', description: 'AC unit blowing hot air in transit. Safety issue due to high temperatures.' }
-  ]);
-
-  // Licenses list
-  const licenses: ComplianceLicense[] = [
-    { driver: 'John Doe', status: 'Expired', expiryDate: '2026-06-01', licenseClass: 'Class A' },
-    { driver: 'Sarah Jenkins', status: 'Expiring Soon', expiryDate: '2026-09-01', licenseClass: 'Class B' },
-    { driver: 'David Miller', status: 'Missing Docs', expiryDate: '2027-02-14', licenseClass: 'Class A' },
-    { driver: 'Marcus Chen', status: 'Compliant', expiryDate: '2026-10-15', licenseClass: 'Class A' }
-  ];
-
-  // Driver risks list
-  const driverRisks: DriverRisk[] = [
-    { name: 'Robert Jenkins', safetyScore: 98, incidentsCount: 1, complaintsCount: 1, complianceStatus: 'Valid', riskLevel: 'Low' },
-    { name: 'David Miller', safetyScore: 42, incidentsCount: 4, complaintsCount: 0, complianceStatus: 'Suspended', riskLevel: 'High' },
-    { name: 'John Doe', safetyScore: 68, incidentsCount: 2, complaintsCount: 0, complianceStatus: 'Expired License', riskLevel: 'High' },
-    { name: 'Sarah Jenkins', safetyScore: 91, incidentsCount: 0, complaintsCount: 1, complianceStatus: 'Valid', riskLevel: 'Medium' },
-    { name: 'Marcus Chen', safetyScore: 97, incidentsCount: 0, complaintsCount: 0, complianceStatus: 'Valid', riskLevel: 'Low' }
-  ];
-
-  // Selected Detail Item State
-  // Type: 'incident' | 'complaint'
   const [selectedCaseType, setSelectedCaseType] = useState<'incident' | 'complaint'>('incident');
-  const [selectedCaseId, setSelectedCaseId] = useState<string>('INC-7021');
+  const [selectedCaseId, setSelectedCaseId] = useState<string>('');
 
-  // Timeline Activity Feed
-  const [activityFeed, setActivityFeed] = useState<string[]>([
-    '14:22 PM - Incident #INC-7021 Investigating (Driver: Robert Jenkins)',
-    '13:50 PM - License Renewal Alert generated for Sarah Jenkins',
-    '11:04 AM - Complaint #CMP-1025 received: Scheduling conflict',
-    'Yesterday - Driver David Miller Suspended for audit conflict'
-  ]);
+  useEffect(() => {
+    const unsubInc = onSnapshot(collection(db, 'incidents'), (snapshot) => {
+      const list: Incident[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...(docSnap.data() as Omit<Incident, 'id'>) });
+      });
+      setIncidents(list);
+      if (list.length > 0 && selectedCaseType === 'incident' && !selectedCaseId) {
+        setSelectedCaseId(list[0].id);
+      }
+    });
 
-  // Selected Detail object helper
+    const unsubComp = onSnapshot(collection(db, 'complaints'), (snapshot) => {
+      const list: Complaint[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...(docSnap.data() as Omit<Complaint, 'id'>) });
+      });
+      setComplaints(list);
+      if (list.length > 0 && selectedCaseType === 'complaint' && !selectedCaseId) {
+        setSelectedCaseId(list[0].id);
+      }
+    });
+
+    const unsubDrivers = onSnapshot(collection(db, 'drivers'), (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setDrivers(list);
+    });
+
+    const unsubLogs = onSnapshot(collection(db, 'auditLogs'), (snapshot) => {
+      const logs: string[] = [];
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.timestamp && (d.action?.includes('SAFETY') || d.action?.includes('COMPLAINT') || d.action?.includes('INCIDENT'))) {
+           const timeStr = d.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+           logs.push(`${timeStr} - ${d.details}`);
+        }
+      });
+      setActivityFeed(logs.slice(0, 15));
+    });
+
+    return () => { unsubInc(); unsubComp(); unsubDrivers(); unsubLogs(); };
+  }, []);
+
+  const licenses: ComplianceLicense[] = drivers.map(d => {
+    let status: 'Expired' | 'Expiring Soon' | 'Compliant' | 'Missing Docs' = 'Compliant';
+    if (!d.expiryDate) {
+      status = 'Missing Docs';
+    } else {
+      const expDate = new Date(d.expiryDate);
+      const now = new Date();
+      if (expDate < now) status = 'Expired';
+      else if ((expDate.getTime() - now.getTime()) / (1000 * 3600 * 24) < 30) status = 'Expiring Soon';
+    }
+    return {
+      driver: d.name,
+      status,
+      expiryDate: d.expiryDate || 'N/A',
+      licenseClass: d.category || 'Class A'
+    };
+  });
+
+  const driverRisks: DriverRisk[] = drivers.map(d => {
+    const dIncidents = incidents.filter(i => i.driver === d.name);
+    const dComplaints = complaints.filter(c => c.driver === d.name);
+    let riskLevel: 'Low' | 'Medium' | 'High' = 'Low';
+    if (d.safetyScore < 75 || dIncidents.length > 2) riskLevel = 'High';
+    else if (d.safetyScore < 90 || dIncidents.length > 0 || dComplaints.length > 0) riskLevel = 'Medium';
+    
+    return {
+      name: d.name,
+      safetyScore: d.safetyScore || 90,
+      incidentsCount: dIncidents.length,
+      complaintsCount: dComplaints.length,
+      complianceStatus: d.status,
+      riskLevel
+    };
+  });
+
   const selectedIncident = incidents.find(i => i.id === selectedCaseId);
   const selectedComplaint = complaints.find(c => c.id === selectedCaseId);
 
   // Actions
-  const handleAssignInvestigation = (caseId: string) => {
-    setIncidents(prev => prev.map(inc => {
-      if (inc.id === caseId) {
-        return { ...inc, status: 'Investigating' };
-      }
-      return inc;
-    }));
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setActivityFeed(prev => [`${timeStr} - Case #${caseId} investigation assigned`, ...prev]);
+  const handleAssignInvestigation = async (caseId: string) => {
+    await updateDoc(doc(db, 'incidents', caseId), { status: 'Investigating' });
+    await addDoc(collection(db, 'auditLogs'), {
+      action: 'SAFETY_INVESTIGATION',
+      details: `Incident #${caseId} investigation assigned`,
+      userEmail: auth.currentUser?.email || 'safety@transitops.global',
+      timestamp: new Date()
+    });
   };
 
-  const handleUpdateStatus = (caseId: string, nextStatus: Incident['status']) => {
-    setIncidents(prev => prev.map(inc => {
-      if (inc.id === caseId) {
-        return { ...inc, status: nextStatus };
-      }
-      return inc;
-    }));
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setActivityFeed(prev => [`${timeStr} - Case #${caseId} status updated to ${nextStatus}`, ...prev]);
+  const handleUpdateStatus = async (caseId: string, nextStatus: Incident['status']) => {
+    await updateDoc(doc(db, 'incidents', caseId), { status: nextStatus });
+    await addDoc(collection(db, 'auditLogs'), {
+      action: 'SAFETY_STATUS_UPDATE',
+      details: `Incident #${caseId} status updated to ${nextStatus}`,
+      userEmail: auth.currentUser?.email || 'safety@transitops.global',
+      timestamp: new Date()
+    });
   };
 
-  const handleCloseCase = (caseId: string) => {
-    setIncidents(prev => prev.map(inc => {
-      if (inc.id === caseId) {
-        return { ...inc, status: 'Closed' };
-      }
-      return inc;
-    }));
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setActivityFeed(prev => [`${timeStr} - Case #${caseId} marked as Closed`, ...prev]);
+  const handleCloseCase = async (caseId: string) => {
+    await updateDoc(doc(db, 'incidents', caseId), { status: 'Closed' });
+    await addDoc(collection(db, 'auditLogs'), {
+      action: 'SAFETY_CASE_CLOSE',
+      details: `Incident #${caseId} marked as Closed`,
+      userEmail: auth.currentUser?.email || 'safety@transitops.global',
+      timestamp: new Date()
+    });
   };
 
-  const handleRespondComplaint = (complaintId: string) => {
-    setComplaints(prev => prev.map(c => {
-      if (c.id === complaintId) {
-        return { ...c, status: 'Reviewed' };
-      }
-      return c;
-    }));
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setActivityFeed(prev => [`${timeStr} - Complaint #${complaintId} marked as Reviewed`, ...prev]);
+  const handleRespondComplaint = async (complaintId: string) => {
+    await updateDoc(doc(db, 'complaints', complaintId), { status: 'Reviewed' });
+    await addDoc(collection(db, 'auditLogs'), {
+      action: 'COMPLAINT_REVIEW',
+      details: `Complaint #${complaintId} marked as Reviewed`,
+      userEmail: auth.currentUser?.email || 'safety@transitops.global',
+      timestamp: new Date()
+    });
   };
 
-  const handleEscalateComplaint = (complaintId: string) => {
-    setComplaints(prev => prev.map(c => {
-      if (c.id === complaintId) {
-        return { ...c, status: 'Escalated' };
-      }
-      return c;
-    }));
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setActivityFeed(prev => [`${timeStr} - Complaint #${complaintId} Escalate to Safety Manager`, ...prev]);
+  const handleEscalateComplaint = async (complaintId: string) => {
+    await updateDoc(doc(db, 'complaints', complaintId), { status: 'Escalated' });
+    await addDoc(collection(db, 'auditLogs'), {
+      action: 'COMPLAINT_ESCALATE',
+      details: `Complaint #${complaintId} escalated to Safety Manager`,
+      userEmail: auth.currentUser?.email || 'safety@transitops.global',
+      timestamp: new Date()
+    });
   };
 
-  const handleResolveComplaint = (complaintId: string) => {
-    setComplaints(prev => prev.map(c => {
-      if (c.id === complaintId) {
-        return { ...c, status: 'Resolved' };
-      }
-      return c;
-    }));
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setActivityFeed(prev => [`${timeStr} - Complaint #${complaintId} marked as Resolved`, ...prev]);
+  const handleResolveComplaint = async (complaintId: string) => {
+    await updateDoc(doc(db, 'complaints', complaintId), { status: 'Resolved' });
+    await addDoc(collection(db, 'auditLogs'), {
+      action: 'COMPLAINT_RESOLVE',
+      details: `Complaint #${complaintId} resolved`,
+      userEmail: auth.currentUser?.email || 'safety@transitops.global',
+      timestamp: new Date()
+    });
   };
 
   // Recharts Analytics datasets
