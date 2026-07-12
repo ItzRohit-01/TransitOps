@@ -121,7 +121,7 @@ src/
 Clone the repository:
 
 ```bash
-git clone <YOUR_GITHUB_REPO_LINK>
+git clone <https://github.com/ItzRohit-01/TransitOps.git>
 ```
 
 Navigate to the project:
@@ -229,8 +229,11 @@ npm run preview
 
 ## Team
 Rohit Prasad
+
 Mohammed Jazim
+
 Shameer
+
 Irshad Ahamed
 
 Built as part of the Odoo Hackathon.
