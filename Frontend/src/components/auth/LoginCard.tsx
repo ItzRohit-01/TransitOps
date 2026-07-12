@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Lock, Route, ShieldCheck, Landmark } from 'lucide-react';
 import { AuthInput } from './AuthInput';
 import { AuthButton } from './AuthButton';
@@ -37,6 +38,7 @@ const DEMO_ACCOUNTS = [
 ];
 
 export const LoginCard: React.FC = () => {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -90,6 +92,11 @@ export const LoginCard: React.FC = () => {
     setTimeout(() => {
       setIsLoading(false);
       setSuccessMessage(`Successfully signed in as ${email}!`);
+      
+      // Redirect to the dashboard after a short delay for UX
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 800);
     }, 1500);
   };
 
