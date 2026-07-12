@@ -3,12 +3,12 @@ const store = JSON.parse(localStorage.getItem('mockDB') || '{}');
 const save = () => localStorage.setItem('mockDB', JSON.stringify(store));
 
 // A very simplified mock of the Firebase v9 Firestore SDK
-export const collection = (db: any, path: string) => path;
+export const collection = (_db: any, path: string) => path;
 
-export const doc = (db: any, path: string, id?: string) => {
+export const doc = (_db: any, path: string, id?: string) => {
   // Sometimes doc(db, 'collection', 'id') is passed, sometimes doc(collectionRef, 'id')
   // We'll normalize it to "path/id"
-  const collectionPath = typeof db === 'string' ? db : path;
+  const collectionPath = typeof _db === 'string' ? _db : path;
   const docId = id ? id : crypto.randomUUID();
   return `${collectionPath}/${docId}`;
 };
@@ -74,7 +74,8 @@ const notify = (path: string) => {
   (listeners[path] || []).forEach(cb => {
     const items = store[path] || {};
     cb({
-      forEach: (iterCb: any) => Object.entries(items).forEach(([id, data]) => iterCb({ id, data: () => data }))
+      forEach: (iterCb: any) => Object.entries(items).forEach(([id, data]) => iterCb({ id, data: () => data })),
+      docChanges: () => Object.entries(items).map(([id, data]) => ({ type: 'added', doc: { id, data: () => data } }))
     });
   });
 };
@@ -92,6 +93,6 @@ export const onSnapshot = (pathOrQuery: any, cb: Function) => {
 
 export const serverTimestamp = () => new Date();
 export const getFirestore = () => ({});
-export const query = (ref: any, ...args: any[]) => ({ path: typeof ref === 'string' ? ref : ref.path });
+export const query = (ref: any, ) => ({ path: typeof ref === 'string' ? ref : ref.path });
 export const orderBy = () => ({});
 export const limit = () => ({});

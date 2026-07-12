@@ -275,7 +275,7 @@ export const AIIntelligence: React.FC = () => {
                   {insights.slice(0, 5).map((insight, idx) => (
                     <div key={idx}>
                       <p className="text-slate-800 font-bold">{insight.title}</p>
-                      <span className="text-[10px] text-slate-400">{insight.description.substring(0, 50)}... • {insight.date?.seconds ? new Date(insight.date.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now'}</span>
+                      <span className="text-[10px] text-slate-400">{(insight.description || '').substring(0, 50)}... • {insight.date?.seconds ? new Date(insight.date.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now'}</span>
                     </div>
                   ))}
                   {insights.length === 0 && <p className="text-slate-400">No recent insights.</p>}

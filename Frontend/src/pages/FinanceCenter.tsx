@@ -53,7 +53,7 @@ export const FinanceCenter: React.FC = () => {
     { id: 'V-109', name: 'Mack Anthem', revenue: 48000, cost: 29000, profit: 19000, roi: 65.5 }
   ]);
 
-  const [routesPerformance] = useState<RoutePerformance[]>([
+  const [routesPerformance, setRoutesPerformance] = useState<RoutePerformance[]>([
     { route: 'CHI ➜ DET', revenue: 124000, cost: 72000, profit: 52000, efficiency: '92.4%' },
     { route: 'AUS ➔ HOU', revenue: 84000, cost: 58000, profit: 26000, efficiency: '78.2%' },
     { route: 'DEN ➜ SLC', revenue: 98000, cost: 86000, profit: 12000, efficiency: '64.5%' }
@@ -77,19 +77,22 @@ export const FinanceCenter: React.FC = () => {
 
   useEffect(() => {
     const unsubExp = onSnapshot(collection(db, 'expenses'), (snapshot) => {
+      let totRev = 0;
+      let totExp = 0;
+      let fuel = 0;
       snapshot.forEach(docSnap => {
-        if (docSnap.id === 'EXP-2026-07') {
-          const d = docSnap.data();
-          setFinanceKPIs({
-             totalRevenue: d.totalRevenue || 0,
-             totalExpenses: d.totalExpenses || 0,
-             netProfit: d.netProfit || 0,
-             fleetROI: d.fleetROI || 0,
-             costPerKm: d.costPerKm || 0,
-             fuel: d.fuel || 0
-          });
-        }
+        const d = docSnap.data();
+        if (d.totalRevenue) totRev += d.totalRevenue;
+        if (d.totalExpenses) totExp += d.totalExpenses;
+        if (d.fuel) fuel += d.fuel;
       });
+      setFinanceKPIs((prev: any) => ({
+        ...prev,
+        totalRevenue: totRev || prev.totalRevenue,
+        totalExpenses: totExp || prev.totalExpenses,
+        netProfit: (totRev - totExp) || prev.netProfit,
+        fuel: fuel || prev.fuel
+      }));
     });
 
     const unsubLogs = onSnapshot(collection(db, 'auditLogs'), (snapshot) => {
@@ -108,8 +111,37 @@ export const FinanceCenter: React.FC = () => {
       }
       setActivities(logs.slice(0, 10));
     });
+    
+    const unsubTrips = onSnapshot(collection(db, 'trips'), (snapshot) => {
+      // Very basic mock dynamic aggregation for routes performance
+      const routesMap: any = {};
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.status === 'COMPLETED' && d.routeFull) {
+           const rCode = d.routeFull;
+           if(!routesMap[rCode]) routesMap[rCode] = { route: rCode, revenue: 0, cost: 0, count: 0 };
+           
+           const rev = parseFloat(String(d.cargo).replace(/[^0-9.]/g, '')) * 10 || 1200; // Mock revenue from cargo
+           const cost = parseFloat(String(d.opCost).replace(/[^0-9.]/g, '')) || 400; // Mock cost
+           routesMap[rCode].revenue += rev;
+           routesMap[rCode].cost += cost;
+           routesMap[rCode].count += 1;
+        }
+      });
+      
+      const arr = Object.values(routesMap).map((r: any) => ({
+         route: r.route,
+         revenue: r.revenue,
+         cost: r.cost,
+         profit: r.revenue - r.cost,
+         efficiency: Math.round(((r.revenue - r.cost)/r.revenue)*100) + '%'
+      }));
+      if (arr.length > 0) {
+         setRoutesPerformance(arr);
+      }
+    });
 
-    return () => { unsubExp(); unsubLogs(); };
+    return () => { unsubExp(); unsubLogs(); unsubTrips(); };
   }, []);
 
   const triggerExport = async (reportName: string) => {

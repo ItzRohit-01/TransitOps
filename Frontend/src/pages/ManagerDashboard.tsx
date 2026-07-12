@@ -6,16 +6,124 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Clock, 
-  Flame, 
   Sparkles, 
   HelpCircle, 
   Maximize2 
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useEffect } from 'react';
+import { db, auth } from '../firebase';
+import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 
 export const ManagerDashboard: React.FC = () => {
   const [financialRange, setFinancialRange] = useState('Last 30 Days');
+
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [trips, setTrips] = useState<any[]>([]);
+  const [financeKPIs, setFinanceKPIs] = useState<any>({});
+  
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
+
+  useEffect(() => {
+    const unsubVehicles = onSnapshot(collection(db, 'vehicles'), (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(docSnap => list.push({ id: docSnap.id, ...docSnap.data() }));
+      setVehicles(list);
+    });
+
+    const unsubDrivers = onSnapshot(collection(db, 'drivers'), (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(docSnap => list.push({ id: docSnap.id, ...docSnap.data() }));
+      setDrivers(list);
+    });
+
+    const unsubTrips = onSnapshot(collection(db, 'trips'), (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(docSnap => list.push({ id: docSnap.id, ...docSnap.data() }));
+      setTrips(list);
+    });
+
+    // unused
+
+      
+
+    const unsubLogs = onSnapshot(collection(db, 'auditLogs'), (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(docSnap => list.push({ id: docSnap.id, ...docSnap.data() }));
+      // Sort by timestamp desc
+      list.sort((a, b) => {
+        const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : new Date(a.timestamp).getTime();
+        const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : new Date(b.timestamp).getTime();
+        return timeB - timeA;
+      });
+      setAuditLogs(list);
+    });
+    
+    const unsubExp = onSnapshot(collection(db, 'expenses'), (snapshot) => {
+      snapshot.forEach(docSnap => {
+        if (docSnap.id === 'EXP-2026-07') {
+          setFinanceKPIs(docSnap.data());
+        }
+      });
+    });
+
+    return () => { unsubVehicles(); unsubDrivers(); unsubTrips(); unsubLogs(); unsubExp(); };
+  }, []);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    const csvData = 'Category,Value\\nTotal Fleet,' + vehicles.length + '\\nActive Drivers,' + drivers.filter(d => d.status === 'ON TRIP').length + '\\nActive Trips,' + trips.filter(t => t.status === 'ON SCHEDULE').length;
+    
+    const blob = new Blob([csvData], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Manager_Dashboard_Export.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    await addDoc(collection(db, 'auditLogs'), {
+      action: 'DASHBOARD_EXPORT',
+      details: `Exported Manager Dashboard Summary`,
+      userEmail: auth.currentUser?.email || 'manager@transitops.global',
+      timestamp: new Date()
+    });
+    
+    setTimeout(() => setIsExporting(false), 1000);
+  };
+
+  // Computations
+  const totalFleet = vehicles.length || 482;
+  const activeDrivers = drivers.filter(d => d.status === 'ON TRIP' || d.status === 'AVAILABLE').length || 128;
+  const activeTripsCount = trips.filter(t => t.status === 'ON SCHEDULE' || t.status === 'DELAYED').length || 89;
+  
+  const healthyCount = vehicles.filter(v => v.health >= 80).length || 428;
+  const attentionCount = vehicles.filter(v => v.health >= 50 && v.health < 80).length || 40;
+  const criticalCount = vehicles.filter(v => v.health < 50).length || 14;
+  const fleetHealthScore = vehicles.length > 0 ? Math.round((healthyCount / vehicles.length) * 100) : 89;
+
+  const activeVehiclesCount = vehicles.filter(v => v.status === 'ON TRIP').length || 342;
+  const availableVehiclesCount = vehicles.filter(v => v.status === 'AVAILABLE').length || 96;
+  const maintenanceVehiclesCount = vehicles.filter(v => v.status === 'IN SHOP').length || 34;
+
+  const dynamicFleetHealthData = [
+    { name: 'Healthy', value: healthyCount, color: '#10B981' },
+    { name: 'Attention Required', value: attentionCount, color: '#F59E0B' },
+    { name: 'Critical', value: criticalCount, color: '#EF4444' }
+  ];
+
+  const formatCurrency = (val: number) => {
+    if (!val) return '$0';
+    if (val >= 1000000) return '$' + (val / 1000000).toFixed(1) + 'M';
+    if (val >= 1000) return '$' + (val / 1000).toFixed(0) + 'k';
+    return '$' + val;
+  };
+
+  const revenue = financeKPIs.totalRevenue || 2412090;
+
 
   // Recharts Fleet Health Data
   const fleetHealthData = [
@@ -56,7 +164,7 @@ export const ManagerDashboard: React.FC = () => {
             <div className="flex flex-col">
               <span className="text-xs text-slate-400 font-semibold mb-1">Total Fleet</span>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold tracking-tight font-outfit">482</span>
+                <span className="text-3xl font-extrabold tracking-tight font-outfit">{totalFleet}</span>
                 <span className="text-xs text-emerald-400 font-bold flex items-center">
                   +2.4%
                 </span>
@@ -66,35 +174,35 @@ export const ManagerDashboard: React.FC = () => {
             <div className="flex flex-col">
               <span className="text-xs text-slate-400 font-semibold mb-1">Active Drivers</span>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold tracking-tight font-outfit">128</span>
+                <span className="text-3xl font-extrabold tracking-tight font-outfit">{activeDrivers}</span>
               </div>
             </div>
 
             <div className="flex flex-col">
               <span className="text-xs text-slate-400 font-semibold mb-1">Active Trips</span>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold tracking-tight font-outfit">89</span>
+                <span className="text-3xl font-extrabold tracking-tight font-outfit">{activeTripsCount}</span>
               </div>
             </div>
 
             <div className="flex flex-col">
               <span className="text-xs text-slate-400 font-semibold mb-1">Fleet Health</span>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold tracking-tight text-emerald-400 font-outfit">89%</span>
+                <span className="text-3xl font-extrabold tracking-tight text-emerald-400 font-outfit">{fleetHealthScore}%</span>
               </div>
             </div>
 
             <div className="flex flex-col">
               <span className="text-xs text-slate-400 font-semibold mb-1">Monthly Revenue</span>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold tracking-tight font-outfit">$2.4M</span>
+                <span className="text-3xl font-extrabold tracking-tight font-outfit">{formatCurrency(revenue)}</span>
               </div>
             </div>
 
             <div className="flex flex-col">
               <span className="text-xs text-slate-400 font-semibold mb-1">Critical Alerts</span>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold tracking-tight text-rose-500 font-outfit">14</span>
+                <span className="text-3xl font-extrabold tracking-tight text-rose-500 font-outfit">{criticalCount}</span>
               </div>
             </div>
           </div>
@@ -109,7 +217,7 @@ export const ManagerDashboard: React.FC = () => {
               <span className="bg-sky-50 text-sky-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full">+ 12%</span>
             </div>
             <div>
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block mb-2">342</span>
+              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block mb-2">{activeVehiclesCount}</span>
               <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-sky-500 rounded-full" style={{ width: '70%' }}></div>
               </div>
@@ -123,7 +231,7 @@ export const ManagerDashboard: React.FC = () => {
               <span className="bg-emerald-50 text-emerald-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full">Optimal</span>
             </div>
             <div>
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block mb-2">96</span>
+              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block mb-2">{availableVehiclesCount}</span>
               <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-emerald-500 rounded-full" style={{ width: '90%' }}></div>
               </div>
@@ -137,7 +245,7 @@ export const ManagerDashboard: React.FC = () => {
               <span className="bg-amber-50 text-amber-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full">Planned</span>
             </div>
             <div>
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block mb-2">34</span>
+              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block mb-2">{maintenanceVehiclesCount}</span>
               <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-amber-500 rounded-full" style={{ width: '35%' }}></div>
               </div>
@@ -151,7 +259,7 @@ export const ManagerDashboard: React.FC = () => {
               <span className="bg-rose-50 text-rose-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full">Action Req</span>
             </div>
             <div>
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block mb-2">14</span>
+              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit block mb-2">{criticalCount}</span>
               <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-rose-500 rounded-full animate-pulse" style={{ width: '15%' }}></div>
               </div>
@@ -206,7 +314,7 @@ export const ManagerDashboard: React.FC = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={fleetHealthData}
+                        data={dynamicFleetHealthData}
                         cx="50%"
                         cy="50%"
                         innerRadius={55}
@@ -221,7 +329,7 @@ export const ManagerDashboard: React.FC = () => {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-3xl font-black text-slate-900 font-outfit">89%</span>
+                    <span className="text-3xl font-black text-slate-900 font-outfit">{fleetHealthScore}%</span>
                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Status: Great</span>
                   </div>
                 </div>
@@ -233,21 +341,21 @@ export const ManagerDashboard: React.FC = () => {
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                     <span>Healthy</span>
                   </div>
-                  <span className="font-bold text-slate-900">428</span>
+                  <span className="font-bold text-slate-900">{healthyCount}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
                     <span>Attention Required</span>
                   </div>
-                  <span className="font-bold text-slate-900">40</span>
+                  <span className="font-bold text-slate-900">{attentionCount}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
                     <span>Critical</span>
                   </div>
-                  <span className="font-bold text-slate-900">14</span>
+                  <span className="font-bold text-slate-900">{criticalCount}</span>
                 </div>
               </div>
             </div>
@@ -455,10 +563,10 @@ export const ManagerDashboard: React.FC = () => {
                   <h3 className="font-outfit font-extrabold text-slate-900 text-base">Active Trip Command</h3>
                 </div>
                 <div className="flex gap-2">
-                  <button className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-[10px] rounded-lg border border-slate-200/60 transition-all">
-                    Export Logs
+                  <button onClick={handleExport} className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-[10px] rounded-lg border border-slate-200/60 transition-all">
+                    {isExporting ? 'Exporting...' : 'Export Logs'}
                   </button>
-                  <button className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-[10px] rounded-lg border border-slate-200/60 transition-all">
+                  <button onClick={handleExport} className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-[10px] rounded-lg border border-slate-200/60 transition-all">
                     View All Trips
                   </button>
                 </div>
@@ -578,66 +686,33 @@ export const ManagerDashboard: React.FC = () => {
 
               {/* Feed List */}
               <div className="space-y-5">
-                {/* Item 1 */}
-                <div className="flex gap-3 items-start">
-                  <div className="bg-emerald-50 text-emerald-600 p-1.5 rounded-lg shrink-0 mt-0.5">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800 leading-tight">
-                      Trip <span className="font-extrabold">#TR-8812</span> completed by Marcus Ford
-                    </p>
-                    <span className="text-[10px] text-slate-400 font-bold mt-1 block">
-                      2 mins ago • Chicago Terminal
-                    </span>
-                  </div>
-                </div>
+                {auditLogs.length > 0 ? auditLogs.slice(0, 4).map((log, i) => {
+                  let Icon = Sparkles;
+                  let colorClass = 'bg-slate-100 text-slate-600';
+                  if (log.action?.includes('CREATE')) { Icon = CheckCircle2; colorClass = 'bg-emerald-50 text-emerald-600'; }
+                  if (log.action?.includes('ERROR') || log.action?.includes('FAIL')) { Icon = AlertCircle; colorClass = 'bg-rose-50 text-rose-600'; }
+                  if (log.action?.includes('UPDATE') || log.action?.includes('DISPATCH')) { Icon = Clock; colorClass = 'bg-sky-50 text-sky-600'; }
 
-                {/* Item 2 */}
-                <div className="flex gap-3 items-start">
-                  <div className="bg-rose-50 text-rose-600 p-1.5 rounded-lg shrink-0 mt-0.5 animate-pulse">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800 leading-tight">
-                      Engine Fault Detected in Vehicle <span className="font-extrabold">#V-1292</span>
-                    </p>
-                    <p className="text-[10px] text-rose-500 font-extrabold mt-0.5">Dispatch Technician</p>
-                    <span className="text-[10px] text-slate-400 font-bold mt-1 block">
-                      12 mins ago • Highway I-90
-                    </span>
-                  </div>
-                </div>
+                  const timeStr = log.timestamp?.toDate ? log.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently';
 
-                {/* Item 3 */}
-                <div className="flex gap-3 items-start">
-                  <div className="bg-sky-50 text-sky-600 p-1.5 rounded-lg shrink-0 mt-0.5">
-                    <Clock className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800 leading-tight">
-                      New Assignment for Rosa Kim
-                    </p>
-                    <span className="text-[10px] text-slate-400 font-bold mt-1 block">
-                      45 mins ago • Dispatch Hub 8
-                    </span>
-                  </div>
-                </div>
-
-                {/* Item 4 */}
-                <div className="flex gap-3 items-start">
-                  <div className="bg-slate-100 text-slate-600 p-1.5 rounded-lg shrink-0 mt-0.5">
-                    <Flame className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800 leading-tight">
-                      Fueling Stop recorded: <span className="font-extrabold">#V-1102</span>
-                    </p>
-                    <span className="text-[10px] text-slate-400 font-bold mt-1 block">
-                      1 hour ago • Shell Plaza 42
-                    </span>
-                  </div>
-                </div>
+                  return (
+                    <div key={i} className="flex gap-3 items-start">
+                      <div className={`${colorClass} p-1.5 rounded-lg shrink-0 mt-0.5`}>
+                        <Icon className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800 leading-tight">
+                          {log.details}
+                        </p>
+                        <span className="text-[10px] text-slate-400 font-bold mt-1 block">
+                          {timeStr} • {log.userEmail}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <div className="text-center text-xs text-slate-400 py-4 font-semibold">No recent activity found.</div>
+                )}
               </div>
             </div>
           </div>

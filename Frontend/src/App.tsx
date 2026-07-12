@@ -11,11 +11,15 @@ import { FinanceCenter } from './pages/FinanceCenter';
 import { AIIntelligence } from './pages/AIIntelligence';
 import { Administration } from './pages/Administration';
 import { DispatcherDashboard } from './pages/DispatcherDashboard';
+import { NotificationProvider } from './contexts/NotificationContext';
+import { ToastContainer } from './components/layout/ToastContainer';
 
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <NotificationProvider>
+        <ToastContainer />
+        <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           
@@ -95,6 +99,7 @@ function App() {
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

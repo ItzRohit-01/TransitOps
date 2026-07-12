@@ -128,7 +128,7 @@ export const DispatcherDashboard: React.FC = () => {
       snapshot.forEach(docSnap => {
         const d = docSnap.data();
         if (d.timestamp) {
-           const timeStr = d.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+           const timeStr = d.timestamp.toDate ? d.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(d.timestamp.seconds ? d.timestamp.seconds * 1000 : Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
            logs.push(`${timeStr} - ${d.details}`);
         }
       });
