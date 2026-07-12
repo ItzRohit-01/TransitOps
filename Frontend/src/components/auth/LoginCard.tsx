@@ -88,14 +88,36 @@ export const LoginCard: React.FC = () => {
     setIsLoading(true);
     setSuccessMessage('');
 
+    // Determine role based on email or selection
+    const lowerEmail = email.toLowerCase();
+    let detectedRole = selectedRole || 'Manager';
+    if (lowerEmail.includes('dispatcher')) {
+      detectedRole = 'Dispatcher';
+    } else if (lowerEmail.includes('safety')) {
+      detectedRole = 'Safety';
+    } else if (lowerEmail.includes('analyst') || lowerEmail.includes('finance')) {
+      detectedRole = 'Analyst';
+    }
+
     // Simulate API login call
     setTimeout(() => {
       setIsLoading(false);
       setSuccessMessage(`Successfully signed in as ${email}!`);
       
-      // Redirect to the dashboard after a short delay for UX
+      // Store in localStorage
+      localStorage.setItem('userRole', detectedRole);
+
+      // Redirect after short delay
       setTimeout(() => {
-        navigate('/dashboard');
+        if (detectedRole === 'Dispatcher') {
+          navigate('/dispatcher');
+        } else if (detectedRole === 'Safety') {
+          navigate('/safety');
+        } else if (detectedRole === 'Analyst') {
+          navigate('/finance');
+        } else {
+          navigate('/dashboard');
+        }
       }, 800);
     }, 1500);
   };

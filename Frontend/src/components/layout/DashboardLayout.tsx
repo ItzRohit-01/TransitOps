@@ -14,9 +14,6 @@ import {
   AlertTriangle, 
   Zap, 
   MoreVertical,
-  FileText,
-  TrendingUp,
-  Compass,
   HelpCircle,
   LogOut,
   ChevronDown
@@ -32,6 +29,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
 
   const currentPath = location.pathname;
 
+  const userRole = localStorage.getItem('userRole') || 'Manager';
+  const isDispatcher = userRole === 'Dispatcher';
+
   const isFleetView = currentPath === '/fleet';
   const isDriversView = currentPath === '/drivers';
   const isTripsView = currentPath === '/trips';
@@ -39,36 +39,80 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const isFinanceView = currentPath === '/finance';
   const isAIView = currentPath === '/ai';
   const isAdminView = currentPath === '/admin';
+  const isDispatcherDashboard = currentPath === '/dispatcher';
 
   // Customize Sidebar Menu Items dynamically
-  const menuItems = isSafetyView 
-    ? [
-        { name: 'Safety Center', icon: <ShieldCheck className="w-5 h-5" />, path: '/safety' },
-        { name: 'Live Tracking', icon: <Compass className="w-5 h-5" />, path: '/safety/live' },
-        { name: 'Incident Logs', icon: <FileText className="w-5 h-5" />, path: '/safety/logs' },
-        { name: 'AI Insights', icon: <Brain className="w-5 h-5" />, path: '/safety/insights' },
-        { name: 'Risk Analysis', icon: <TrendingUp className="w-5 h-5" />, path: '/safety/risk' },
-        { name: 'Fleet Maintenance', icon: <Settings className="w-5 h-5" />, path: '/safety/maintenance' },
-      ]
-    : [
-        { name: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/dashboard' },
-        { name: 'Fleet Management', icon: <Truck className="w-5 h-5" />, path: '/fleet' },
-        { name: 'Driver Management', icon: <Users className="w-5 h-5" />, path: '/drivers' },
-        { name: 'Trip Operations', icon: <Route className="w-5 h-5" />, path: '/trips' },
-        { name: 'Safety Center', icon: <ShieldCheck className="w-5 h-5" />, path: '/safety' },
-        { name: 'Finance Center', icon: <Landmark className="w-5 h-5" />, path: '/finance' },
-        { name: 'AI Intelligence', icon: <Brain className="w-5 h-5" />, path: '/ai' },
-        { name: 'Administration', icon: <Settings className="w-5 h-5" />, path: '/admin' },
-      ];
+  let menuItems = [
+    { 
+      name: 'Dashboard', 
+      icon: <LayoutDashboard className="w-5 h-5" />, 
+      path: isDispatcher ? '/dispatcher' : '/dashboard' 
+    }
+  ];
 
-  // Dynamic Profile info
-  const profileName = isFleetView ? 'Alex Sterling' : 'Marcus Chen';
-  const profileImage = isFleetView 
-    ? 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=100&auto=format&fit=crop'
-    : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop';
+  if (userRole === 'Dispatcher') {
+    menuItems.push(
+      { name: 'Fleet Management', icon: <Truck className="w-5 h-5" />, path: '/fleet' },
+      { name: 'Driver Management', icon: <Users className="w-5 h-5" />, path: '/drivers' },
+      { name: 'Trip Operations', icon: <Route className="w-5 h-5" />, path: '/trips' }
+    );
+  } else if (userRole === 'Safety') {
+    menuItems.push(
+      { name: 'Driver Management', icon: <Users className="w-5 h-5" />, path: '/drivers' },
+      { name: 'Trip Operations', icon: <Route className="w-5 h-5" />, path: '/trips' },
+      { name: 'Safety Center', icon: <ShieldCheck className="w-5 h-5" />, path: '/safety' }
+    );
+  } else if (userRole === 'Analyst') {
+    menuItems.push(
+      { name: 'Trip Operations', icon: <Route className="w-5 h-5" />, path: '/trips' },
+      { name: 'Finance Center', icon: <Landmark className="w-5 h-5" />, path: '/finance' },
+      { name: 'AI Intelligence', icon: <Brain className="w-5 h-5" />, path: '/ai' }
+    );
+  } else {
+    // Fleet Manager (full access)
+    menuItems.push(
+      { name: 'Fleet Management', icon: <Truck className="w-5 h-5" />, path: '/fleet' },
+      { name: 'Driver Management', icon: <Users className="w-5 h-5" />, path: '/drivers' },
+      { name: 'Trip Operations', icon: <Route className="w-5 h-5" />, path: '/trips' },
+      { name: 'Safety Center', icon: <ShieldCheck className="w-5 h-5" />, path: '/safety' },
+      { name: 'Finance Center', icon: <Landmark className="w-5 h-5" />, path: '/finance' },
+      { name: 'AI Intelligence', icon: <Brain className="w-5 h-5" />, path: '/ai' },
+      { name: 'Administration', icon: <Settings className="w-5 h-5" />, path: '/admin' }
+    );
+  }
+
+  const [showProfileMenu, setShowProfileMenu] = React.useState(false);
+
+  // Determine profile information dynamically based on user role
+  let displayProfileName = 'Marcus Chen';
+  let displayProfileTitle = 'Fleet Director';
+  let displayProfileEmail = 'manager@transitops.global';
+  let displayProfileImage = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop';
+
+  if (userRole === 'Dispatcher') {
+    displayProfileName = 'Alexander Sterling';
+    displayProfileTitle = 'Lead Dispatcher';
+    displayProfileEmail = 'dispatcher@transitops.global';
+    displayProfileImage = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=100&auto=format&fit=crop';
+  } else if (userRole === 'Safety') {
+    displayProfileName = 'Sarah Jenkins';
+    displayProfileTitle = 'Safety Compliance';
+    displayProfileEmail = 'safety@transitops.global';
+    displayProfileImage = 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop';
+  } else if (userRole === 'Analyst') {
+    displayProfileName = 'David Miller';
+    displayProfileTitle = 'Financial Analyst';
+    displayProfileEmail = 'analyst@transitops.global';
+    displayProfileImage = 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=100&auto=format&fit=crop';
+  }
+
+  const profileName = displayProfileName;
+  const profileImage = displayProfileImage;
 
   // Dynamic search placeholders
-  const searchPlaceholder = isSafetyView 
+  const searchPlaceholder = isDispatcherDashboard
+    ? 'Search active trips, dispatch codes...'
+    : isSafetyView 
     ? 'Search incidents, drivers...'
     : isFinanceView 
     ? 'Search financials...'
@@ -85,7 +129,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     : 'Search fleet, drivers, or active routes...';
 
   // Dynamic logo subtitle branding
-  const logoSubtitle = isSafetyView 
+  const logoSubtitle = isDispatcherDashboard
+    ? 'DISPATCH COMMAND'
+    : isSafetyView 
     ? 'ENTERPRISE SAFETY'
     : isFinanceView 
     ? 'ENTERPRISE FINANCE'
@@ -95,7 +141,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     ? 'Fleet Command Center' 
     : 'Enterprise Fleet';
 
-  const logoTitle = isSafetyView || isFinanceView || isAIView || isAdminView ? 'TransitOps' : 'TransitOps';
+  const logoTitle = 'TransitOps';
 
   return (
     <div className="min-h-screen bg-[#F8F9FC] flex font-inter">
@@ -159,7 +205,30 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         </div>
 
         {/* Dynamic Sidebar Footer */}
-        <div className="p-4 border-t border-slate-200/80 space-y-3">
+        <div className="p-4 border-t border-slate-200/80 space-y-3 relative">
+          {showProfileMenu && (
+            <div className="absolute bottom-[72px] left-4 right-4 z-50 bg-white border border-slate-200 rounded-xl shadow-lg p-3.5 space-y-3.5 font-inter text-xs text-slate-700 animate-fadeIn">
+              <div className="space-y-1">
+                <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block">Account Details</span>
+                <div className="font-extrabold text-slate-900">{displayProfileName}</div>
+                <div className="text-[10px] text-slate-500 font-semibold">{displayProfileTitle}</div>
+                <div className="text-[10px] text-slate-400 font-medium">{displayProfileEmail}</div>
+              </div>
+              <div className="border-t border-slate-100 pt-2">
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem('userRole');
+                    navigate('/login');
+                  }}
+                  className="w-full flex items-center gap-2 py-1.5 px-2 hover:bg-slate-50 rounded-lg text-rose-600 font-extrabold transition-colors text-left"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
+
           {isDriversView ? (
             <div className="bg-[#0B132B] text-white rounded-xl p-4 shadow-md font-inter space-y-2.5">
               <div>
@@ -219,7 +288,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
               </button>
             </div>
           ) : isAdminView ? (
-            <div className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer font-inter">
+            <div 
+              onClick={() => setShowProfileMenu(prev => !prev)}
+              className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer font-inter"
+            >
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <img
@@ -234,12 +306,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                   <span className="text-[10px] text-slate-400 font-medium">Super Admin</span>
                 </div>
               </div>
-              <button className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
-                <LogOut className="w-4 h-4" />
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowProfileMenu(prev => !prev);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <MoreVertical className="w-4 h-4" />
               </button>
             </div>
           ) : (
-            <div className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer">
+            <div 
+              onClick={() => setShowProfileMenu(prev => !prev)}
+              className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+            >
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <img
@@ -251,10 +332,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-xs font-bold text-slate-800">{profileName}</span>
-                  <span className="text-[10px] text-slate-400 font-medium">Fleet Director</span>
+                  <span className="text-[10px] text-slate-400 font-medium">{displayProfileTitle}</span>
                 </div>
               </div>
-              <button className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowProfileMenu(prev => !prev);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
                 <MoreVertical className="w-4 h-4" />
               </button>
             </div>
@@ -268,7 +355,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         <header className="h-20 bg-white border-b border-slate-200/80 px-8 flex items-center justify-between sticky top-0 z-10 font-inter">
           <div className="flex items-center gap-2">
             <h2 className="font-outfit font-extrabold text-xl text-slate-950">
-              {isSafetyView ? 'Safety Center' : isFinanceView ? 'Finance Center' : isAIView ? 'AI Intelligence' : isAdminView ? 'Administration Center' : 'Fleet Command'}
+              {isSafetyView ? 'Safety Center' : isFinanceView ? 'Finance Center' : isAIView ? 'AI Intelligence' : isAdminView ? 'Administration Center' : isDispatcherDashboard ? 'Dispatcher Command Center' : 'Fleet Command'}
             </h2>
           </div>
 

@@ -1,17 +1,176 @@
-import React from 'react';
-import { 
-  Search,
-  Filter
-} from 'lucide-react';
-import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import React, { useState } from 'react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from 'recharts';
+
+interface Incident {
+  id: string;
+  driver: string;
+  vehicle: string;
+  type: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  date: string;
+  status: 'Open' | 'Investigating' | 'Resolved' | 'Closed';
+  notes: string;
+}
+
+interface Complaint {
+  id: string;
+  driver: string;
+  category: string;
+  priority: 'Low' | 'Medium' | 'High';
+  date: string;
+  status: 'Reviewed' | 'Pending' | 'Escalated' | 'Resolved';
+  description: string;
+}
+
+interface ComplianceLicense {
+  driver: string;
+  status: 'Expired' | 'Expiring Soon' | 'Missing Docs' | 'Compliant';
+  expiryDate: string;
+  licenseClass: string;
+}
+
+interface DriverRisk {
+  name: string;
+  safetyScore: number;
+  incidentsCount: number;
+  complaintsCount: number;
+  complianceStatus: string;
+  riskLevel: 'Low' | 'Medium' | 'High';
+}
 
 export const SafetyCenter: React.FC = () => {
-  const safetyHealthData = [
-    { name: 'Compliant', value: 85, color: '#10B981' },
-    { name: 'Attn.', value: 10, color: '#F59E0B' },
-    { name: 'High-Risk', value: 3, color: '#EF4444' },
-    { name: 'Suspended', value: 2, color: '#1E293B' }
+  // Incident state
+  const [incidents, setIncidents] = useState<Incident[]>([
+    { id: 'INC-7021', driver: 'Robert Jenkins', vehicle: 'V-202', type: 'Speeding Violation', severity: 'Medium', date: '2026-07-12', status: 'Investigating', notes: 'Speed limit exceeded by 15 mph in I-94 corridor corridor zone. Warning sent.' },
+    { id: 'INC-7022', driver: 'John Doe', vehicle: 'V-118', type: 'Hard Braking Event', severity: 'Low', date: '2026-07-12', status: 'Open', notes: 'G-force sensor triggered decelerating warning. Driver logs under review.' },
+    { id: 'INC-7023', driver: 'Elena Rodriguez', vehicle: 'V-109', type: 'Critical Engine Heat Alert', severity: 'High', date: '2026-07-11', status: 'Resolved', notes: 'Cooling fluid low, route halted. Vehicle serviced in shop.' },
+    { id: 'INC-7024', driver: 'David Miller', vehicle: 'V-305', type: 'Unlicensed Driving Attempt', severity: 'Critical', date: '2026-07-10', status: 'Closed', notes: 'Attempted dispatcher scheduling while suspended. Logged in audit feed.' }
+  ]);
+
+  // Complaint state
+  const [complaints, setComplaints] = useState<Complaint[]>([
+    { id: 'CMP-1025', driver: 'Sarah Jenkins', category: 'Dispatcher Scheduling Conflict', priority: 'Medium', date: '2026-07-12', status: 'Pending', description: 'Assigned route exceeds maximum legal daily log hours. Review needed.' },
+    { id: 'CMP-1026', driver: 'Robert Jenkins', category: 'Cabin AC System Failure', priority: 'High', date: '2026-07-11', status: 'Escalated', description: 'AC unit blowing hot air in transit. Safety issue due to high temperatures.' }
+  ]);
+
+  // Licenses list
+  const licenses: ComplianceLicense[] = [
+    { driver: 'John Doe', status: 'Expired', expiryDate: '2026-06-01', licenseClass: 'Class A' },
+    { driver: 'Sarah Jenkins', status: 'Expiring Soon', expiryDate: '2026-09-01', licenseClass: 'Class B' },
+    { driver: 'David Miller', status: 'Missing Docs', expiryDate: '2027-02-14', licenseClass: 'Class A' },
+    { driver: 'Marcus Chen', status: 'Compliant', expiryDate: '2026-10-15', licenseClass: 'Class A' }
+  ];
+
+  // Driver risks list
+  const driverRisks: DriverRisk[] = [
+    { name: 'Robert Jenkins', safetyScore: 98, incidentsCount: 1, complaintsCount: 1, complianceStatus: 'Valid', riskLevel: 'Low' },
+    { name: 'David Miller', safetyScore: 42, incidentsCount: 4, complaintsCount: 0, complianceStatus: 'Suspended', riskLevel: 'High' },
+    { name: 'John Doe', safetyScore: 68, incidentsCount: 2, complaintsCount: 0, complianceStatus: 'Expired License', riskLevel: 'High' },
+    { name: 'Sarah Jenkins', safetyScore: 91, incidentsCount: 0, complaintsCount: 1, complianceStatus: 'Valid', riskLevel: 'Medium' },
+    { name: 'Marcus Chen', safetyScore: 97, incidentsCount: 0, complaintsCount: 0, complianceStatus: 'Valid', riskLevel: 'Low' }
+  ];
+
+  // Selected Detail Item State
+  // Type: 'incident' | 'complaint'
+  const [selectedCaseType, setSelectedCaseType] = useState<'incident' | 'complaint'>('incident');
+  const [selectedCaseId, setSelectedCaseId] = useState<string>('INC-7021');
+
+  // Timeline Activity Feed
+  const [activityFeed, setActivityFeed] = useState<string[]>([
+    '14:22 PM - Incident #INC-7021 Investigating (Driver: Robert Jenkins)',
+    '13:50 PM - License Renewal Alert generated for Sarah Jenkins',
+    '11:04 AM - Complaint #CMP-1025 received: Scheduling conflict',
+    'Yesterday - Driver David Miller Suspended for audit conflict'
+  ]);
+
+  // Selected Detail object helper
+  const selectedIncident = incidents.find(i => i.id === selectedCaseId);
+  const selectedComplaint = complaints.find(c => c.id === selectedCaseId);
+
+  // Actions
+  const handleAssignInvestigation = (caseId: string) => {
+    setIncidents(prev => prev.map(inc => {
+      if (inc.id === caseId) {
+        return { ...inc, status: 'Investigating' };
+      }
+      return inc;
+    }));
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setActivityFeed(prev => [`${timeStr} - Case #${caseId} investigation assigned`, ...prev]);
+  };
+
+  const handleUpdateStatus = (caseId: string, nextStatus: Incident['status']) => {
+    setIncidents(prev => prev.map(inc => {
+      if (inc.id === caseId) {
+        return { ...inc, status: nextStatus };
+      }
+      return inc;
+    }));
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setActivityFeed(prev => [`${timeStr} - Case #${caseId} status updated to ${nextStatus}`, ...prev]);
+  };
+
+  const handleCloseCase = (caseId: string) => {
+    setIncidents(prev => prev.map(inc => {
+      if (inc.id === caseId) {
+        return { ...inc, status: 'Closed' };
+      }
+      return inc;
+    }));
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setActivityFeed(prev => [`${timeStr} - Case #${caseId} marked as Closed`, ...prev]);
+  };
+
+  const handleRespondComplaint = (complaintId: string) => {
+    setComplaints(prev => prev.map(c => {
+      if (c.id === complaintId) {
+        return { ...c, status: 'Reviewed' };
+      }
+      return c;
+    }));
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setActivityFeed(prev => [`${timeStr} - Complaint #${complaintId} marked as Reviewed`, ...prev]);
+  };
+
+  const handleEscalateComplaint = (complaintId: string) => {
+    setComplaints(prev => prev.map(c => {
+      if (c.id === complaintId) {
+        return { ...c, status: 'Escalated' };
+      }
+      return c;
+    }));
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setActivityFeed(prev => [`${timeStr} - Complaint #${complaintId} Escalate to Safety Manager`, ...prev]);
+  };
+
+  const handleResolveComplaint = (complaintId: string) => {
+    setComplaints(prev => prev.map(c => {
+      if (c.id === complaintId) {
+        return { ...c, status: 'Resolved' };
+      }
+      return c;
+    }));
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setActivityFeed(prev => [`${timeStr} - Complaint #${complaintId} marked as Resolved`, ...prev]);
+  };
+
+  // Recharts Analytics datasets
+  const monthlyIncidentsData = [
+    { month: 'Jan', Speeding: 4, Braking: 8, Safety: 1 },
+    { month: 'Feb', Speeding: 3, Braking: 5, Safety: 2 },
+    { month: 'Mar', Speeding: 6, Braking: 9, Safety: 0 },
+    { month: 'Apr', Speeding: 2, Braking: 4, Safety: 1 },
+    { month: 'May', Speeding: 5, Braking: 7, Safety: 3 },
+    { month: 'Jun', Speeding: 3, Braking: 6, Safety: 1 }
+  ];
+
+  const safetyScoreTrend = [
+    { week: 'Wk 1', score: 90 },
+    { week: 'Wk 2', score: 92 },
+    { week: 'Wk 3', score: 91 },
+    { week: 'Wk 4', score: 94 },
+    { week: 'Wk 5', score: 92 }
   ];
 
   return (
@@ -20,316 +179,441 @@ export const SafetyCenter: React.FC = () => {
         
         {/* Title Header with Subtitle */}
         <section>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight font-outfit">Fleet Safety Oversight</h1>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight font-outfit">Safety Command Center</h1>
           <p className="text-xs text-slate-400 font-semibold mt-1">
-            Monitor driver compliance, manage incidents, resolve complaints, and improve fleet safety with real-time AI-powered analytics.
+            Monitor compliance protocols, driver risk indices, licenses, and resolve critical road safety incidents.
           </p>
         </section>
 
-        {/* Stats Row */}
+        {/* Stats row KPIs */}
         <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-5">
           {/* Open Incidents */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-3">Open Incidents</span>
-            <div className="flex justify-between items-end">
-              <span className="text-3xl font-black text-rose-500 tracking-tight font-outfit">12</span>
-              <span className="text-slate-300 font-bold mb-1">🛈</span>
-            </div>
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-2">Open Incidents</span>
+            <span className="text-3xl font-black text-rose-500 font-outfit">{incidents.filter(i => i.status !== 'Closed').length}</span>
           </div>
 
           {/* Pending Complaints */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-3">Pending Complaints</span>
-            <div className="flex justify-between items-end">
-              <span className="text-3xl font-black text-amber-500 tracking-tight font-outfit">5</span>
-              <span className="text-slate-300 font-bold mb-1">💬</span>
-            </div>
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-2">Pending Complaints</span>
+            <span className="text-3xl font-black text-amber-500 font-outfit">{complaints.filter(c => c.status !== 'Resolved').length}</span>
           </div>
 
           {/* Expiring Licenses */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-3">Expiring Licenses</span>
-            <div className="flex justify-between items-end">
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit">8</span>
-              <span className="text-slate-300 font-bold mb-1">📄</span>
-            </div>
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-2">Expiring Licenses</span>
+            <span className="text-3xl font-black text-slate-900 font-outfit">8</span>
           </div>
 
           {/* Suspended Drivers */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-3">Suspended Drivers</span>
-            <div className="flex justify-between items-end">
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit">4</span>
-              <span className="text-slate-300 font-bold mb-1">🚫</span>
-            </div>
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm border-l-4 border-l-rose-500">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-2">Suspended Drivers</span>
+            <span className="text-3xl font-black text-rose-500 font-outfit">4</span>
           </div>
 
           {/* Compliance Score */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-3">Compliance Score</span>
-            <div className="flex justify-between items-end">
-              <span className="text-3xl font-black text-emerald-500 tracking-tight font-outfit">96.4%</span>
-              <span className="text-emerald-500 font-bold mb-1">✔</span>
-            </div>
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-2">Compliance Rate</span>
+            <span className="text-3xl font-black text-emerald-500 font-outfit">96.4%</span>
           </div>
 
           {/* Avg Safety Score */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-3">Avg Safety Score</span>
-            <div className="flex justify-between items-end">
-              <span className="text-3xl font-black text-slate-900 tracking-tight font-outfit">92%</span>
-              <span className="text-slate-300 font-bold mb-1">📈</span>
-            </div>
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-2">Avg Safety Score</span>
+            <span className="text-3xl font-black text-slate-900 font-outfit">92</span>
           </div>
         </section>
 
-        {/* Safety Health & Recent Incident Management */}
+        {/* Incident Management Table & Case Details Panel */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Safety Health Overview (Left 4 cols) */}
-          <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-outfit font-extrabold text-slate-900 text-sm">Safety Health Overview</h3>
-                <button className="text-slate-400 hover:text-slate-600 font-extrabold">•••</button>
-              </div>
-
-              <div className="flex flex-col items-center justify-center relative py-4">
-                <div className="w-40 h-40 relative flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={safetyHealthData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={65}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {safetyHealthData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-2xl font-black text-slate-900 font-outfit">96%</span>
-                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Healthy</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-y-3 mt-4 text-[10px] font-bold text-slate-500 border-t border-slate-100 pt-4">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                <span>Compliant (85%)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
-                <span>Attn. (10%)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
-                <span>High-Risk (3%)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-slate-800 inline-block"></span>
-                <span>Suspended (2%)</span>
-              </div>
+          {/* Incident Table (Left 8 cols) */}
+          <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
+            <h3 className="font-outfit font-extrabold text-slate-900 text-sm mb-5">Incident Management Registry</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="pb-3">INCIDENT ID</th>
+                    <th className="pb-3">DRIVER</th>
+                    <th className="pb-3">VEHICLE</th>
+                    <th className="pb-3">TYPE</th>
+                    <th className="pb-3">SEVERITY</th>
+                    <th className="pb-3 text-right">STATUS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                  {incidents.map((inc) => (
+                    <tr 
+                      key={inc.id} 
+                      onClick={() => {
+                        setSelectedCaseType('incident');
+                        setSelectedCaseId(inc.id);
+                      }}
+                      className={`hover:bg-slate-50/50 cursor-pointer transition-colors ${
+                        selectedCaseType === 'incident' && selectedCaseId === inc.id ? 'bg-slate-50' : ''
+                      }`}
+                    >
+                      <td className="py-4 font-black text-slate-900">#{inc.id}</td>
+                      <td className="py-4 text-slate-800 font-bold">{inc.driver}</td>
+                      <td className="py-4 text-slate-500">{inc.vehicle}</td>
+                      <td className="py-4 text-slate-850 font-bold">{inc.type}</td>
+                      <td className="py-4">
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded ${
+                          inc.severity === 'Critical' ? 'bg-rose-100 text-rose-700' :
+                          inc.severity === 'High' ? 'bg-amber-100 text-amber-700' :
+                          inc.severity === 'Medium' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {inc.severity.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="py-4 text-right">
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                          inc.status === 'Investigating' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                          inc.status === 'Resolved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                          inc.status === 'Closed' ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-slate-550/10 text-slate-800'
+                        }`}>
+                          {inc.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* Recent Incident Management (Right 8 cols) */}
-          <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center mb-6">
+          {/* Incident/Complaint Case Details Panel (Right 4 cols) */}
+          <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col justify-between min-h-[360px]">
+            {selectedCaseType === 'incident' && selectedIncident ? (
+              <div className="space-y-4 font-inter text-xs">
                 <div>
-                  <h3 className="font-outfit font-extrabold text-slate-900 text-sm">Recent Incident Management</h3>
-                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Active investigations and safety violations</p>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide block">Active Case View</span>
+                  <h4 className="text-sm font-black text-slate-900 mt-0.5">Incident #{selectedIncident.id}</h4>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-400">
-                    <Filter className="w-4.5 h-4.5" />
-                  </button>
-                  <button className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-400">
-                    <Search className="w-4.5 h-4.5" />
-                  </button>
+
+                <div className="space-y-2.5 text-slate-700 font-semibold border-b border-slate-100 pb-4">
+                  <div className="flex justify-between">
+                    <span>Driver</span>
+                    <span className="text-slate-900 font-black">{selectedIncident.driver}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Vehicle</span>
+                    <span className="text-slate-900 font-black">{selectedIncident.vehicle}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Date</span>
+                    <span>{selectedIncident.date}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Severity</span>
+                    <span className="text-rose-600 font-black">{selectedIncident.severity}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-bold text-slate-400 block uppercase">Description Notes</span>
+                  <p className="text-[10px] text-slate-500 font-medium leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-150">
+                    {selectedIncident.notes}
+                  </p>
+                </div>
+
+                <div className="pt-2 grid grid-cols-2 gap-2 text-center font-bold">
+                  {selectedIncident.status === 'Open' && (
+                    <button onClick={() => handleAssignInvestigation(selectedIncident.id)} className="col-span-2 py-2 bg-slate-950 hover:bg-slate-900 text-white rounded-lg shadow-sm">
+                      Assign Investigation
+                    </button>
+                  )}
+                  {selectedIncident.status === 'Investigating' && (
+                    <>
+                      <button onClick={() => handleUpdateStatus(selectedIncident.id, 'Resolved')} className="py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-sm">
+                        Resolve Case
+                      </button>
+                      <button onClick={() => handleCloseCase(selectedIncident.id)} className="py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg">
+                        Close Case
+                      </button>
+                    </>
+                  )}
+                  {selectedIncident.status === 'Resolved' && (
+                    <button onClick={() => handleCloseCase(selectedIncident.id)} className="col-span-2 py-2 bg-slate-900 hover:bg-slate-950 text-white rounded-lg shadow-sm">
+                      Close Case
+                    </button>
+                  )}
+                  {selectedIncident.status === 'Closed' && (
+                    <span className="col-span-2 py-1.5 bg-slate-100 text-slate-400 rounded-lg block font-bold text-[10px]">CASE CLOSED</span>
+                  )}
                 </div>
               </div>
+            ) : selectedCaseType === 'complaint' && selectedComplaint ? (
+              <div className="space-y-4 font-inter text-xs">
+                <div>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide block">Active Case View</span>
+                  <h4 className="text-sm font-black text-slate-900 mt-0.5">Complaint #{selectedComplaint.id}</h4>
+                </div>
 
-              {/* Registry Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      <th className="pb-3">INCIDENT ID</th>
-                      <th className="pb-3">DRIVER</th>
-                      <th className="pb-3">VEHICLE</th>
-                      <th className="pb-3">TYPE</th>
-                      <th className="pb-3 text-right">SEVERITY</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
-                    <tr>
-                      <td className="py-4 font-black text-slate-900">#INC-4021</td>
-                      <td className="py-4 flex items-center gap-2.5">
-                        <img 
-                          src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=60&auto=format&fit=crop" 
-                          alt="Sarah Jenkins"
-                          className="w-7 h-7 rounded-full object-cover"
-                        />
-                        Sarah Jenkins
-                      </td>
-                      <td className="py-4">V-102</td>
-                      <td className="py-4 text-slate-800">Speeding</td>
-                      <td className="py-4 text-right">
-                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100">
-                          MEDIUM
-                        </span>
-                      </td>
-                    </tr>
+                <div className="space-y-2.5 text-slate-700 font-semibold border-b border-slate-100 pb-4">
+                  <div className="flex justify-between">
+                    <span>Driver</span>
+                    <span className="text-slate-900 font-black">{selectedComplaint.driver}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Category</span>
+                    <span className="text-slate-900 font-bold">{selectedComplaint.category}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Submitted</span>
+                    <span>{selectedComplaint.date}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Priority</span>
+                    <span className="text-rose-600 font-black">{selectedComplaint.priority}</span>
+                  </div>
+                </div>
 
-                    <tr>
-                      <td className="py-4 font-black text-slate-900">#INC-3988</td>
-                      <td className="py-4 flex items-center gap-2.5">
-                        <img 
-                          src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=60&auto=format&fit=crop" 
-                          alt="Robert Jenkins"
-                          className="w-7 h-7 rounded-full object-cover"
-                        />
-                        Robert Jenkins
-                      </td>
-                      <td className="py-4">V-205</td>
-                      <td className="py-4 text-slate-800">Hard Braking</td>
-                      <td className="py-4 text-right">
-                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-100">
-                          HIGH
-                        </span>
-                      </td>
-                    </tr>
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-bold text-slate-400 block uppercase">Description Notes</span>
+                  <p className="text-[10px] text-slate-500 font-medium leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-150">
+                    {selectedComplaint.description}
+                  </p>
+                </div>
 
-                    <tr>
-                      <td className="py-4 font-black text-slate-900">#INC-3975</td>
-                      <td className="py-4 flex items-center gap-2.5">
-                        <img 
-                          src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=60&auto=format&fit=crop" 
-                          alt="Michael Chen"
-                          className="w-7 h-7 rounded-full object-cover"
-                        />
-                        Michael Chen
-                      </td>
-                      <td className="py-4">V-118</td>
-                      <td className="py-4 text-slate-800">Route Deviance</td>
-                      <td className="py-4 text-right">
-                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
-                          LOW
-                        </span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                <div className="pt-2 flex flex-col gap-2 font-bold">
+                  {selectedComplaint.status === 'Pending' && (
+                    <div className="grid grid-cols-2 gap-2 text-center">
+                      <button onClick={() => handleRespondComplaint(selectedComplaint.id)} className="py-2 bg-slate-950 hover:bg-slate-900 text-white rounded-lg shadow-sm">
+                        Review
+                      </button>
+                      <button onClick={() => handleEscalateComplaint(selectedComplaint.id)} className="py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg">
+                        Escalate
+                      </button>
+                    </div>
+                  )}
+                  {selectedComplaint.status === 'Reviewed' && (
+                    <button onClick={() => handleResolveComplaint(selectedComplaint.id)} className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-sm text-center">
+                      Resolve
+                    </button>
+                  )}
+                  {selectedComplaint.status === 'Escalated' && (
+                    <button onClick={() => handleResolveComplaint(selectedComplaint.id)} className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-sm text-center">
+                      Resolve Escalation
+                    </button>
+                  )}
+                  {selectedComplaint.status === 'Resolved' && (
+                    <span className="w-full py-1.5 bg-slate-100 text-slate-400 rounded-lg block font-bold text-[10px] text-center">COMPLAINT RESOLVED</span>
+                  )}
+                </div>
               </div>
+            ) : (
+              <div className="text-slate-400 text-xs font-bold text-center py-10">Select an incident or complaint case row for options.</div>
+            )}
+          </div>
+
+        </section>
+
+        {/* Complaint Center */}
+        <section className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-6">
+          <div>
+            <h3 className="font-outfit font-extrabold text-slate-900 text-sm">Complaint Center</h3>
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Manage and resolve driver-submitted safety concerns or scheduling issues</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="pb-3">COMPLAINT ID</th>
+                  <th className="pb-3">DRIVER</th>
+                  <th className="pb-3">CATEGORY</th>
+                  <th className="pb-3">PRIORITY</th>
+                  <th className="pb-3">SUBMITTED DATE</th>
+                  <th className="pb-3 text-right">STATUS</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                {complaints.map((c) => (
+                  <tr 
+                    key={c.id} 
+                    onClick={() => {
+                      setSelectedCaseType('complaint');
+                      setSelectedCaseId(c.id);
+                    }}
+                    className={`hover:bg-slate-50/50 cursor-pointer transition-colors ${
+                      selectedCaseType === 'complaint' && selectedCaseId === c.id ? 'bg-slate-50' : ''
+                    }`}
+                  >
+                    <td className="py-4 font-black text-slate-900">#{c.id}</td>
+                    <td className="py-4 text-slate-800 font-bold">{c.driver}</td>
+                    <td className="py-4 text-slate-500">{c.category}</td>
+                    <td className="py-4">
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded ${
+                        c.priority === 'High' ? 'bg-rose-50 text-rose-600' :
+                        c.priority === 'Medium' ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {c.priority}
+                      </span>
+                    </td>
+                    <td className="py-4 text-slate-450">{c.date}</td>
+                    <td className="py-4 text-right">
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                        c.status === 'Pending' ? 'bg-amber-50 text-amber-600 border-amber-100 animate-pulse' :
+                        c.status === 'Escalated' ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                        c.status === 'Resolved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-200'
+                      }`}>
+                        {c.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* License Compliance & Driver Risk Rankings */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* Driver Risk Rankings (Left 8 cols) */}
+          <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
+            <h3 className="font-outfit font-extrabold text-slate-900 text-sm mb-5">Driver Risk rankings & safety metrics</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="pb-3">DRIVER</th>
+                    <th className="pb-3 text-center">SAFETY SCORE</th>
+                    <th className="pb-3 text-center">INCIDENTS</th>
+                    <th className="pb-3 text-center">COMPLAINTS</th>
+                    <th className="pb-3">COMPLIANCE STATE</th>
+                    <th className="pb-3 text-right">RISK LEVEL</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                  {driverRisks.map((d, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/40">
+                      <td className="py-4 font-black text-slate-900">{d.name}</td>
+                      <td className="py-4 text-center font-bold">
+                        <span className={d.safetyScore < 70 ? 'text-rose-500' : 'text-slate-800'}>{d.safetyScore}</span>
+                      </td>
+                      <td className="py-4 text-center">{d.incidentsCount}</td>
+                      <td className="py-4 text-center">{d.complaintsCount}</td>
+                      <td className="py-4 text-slate-500 font-bold">{d.complianceStatus}</td>
+                      <td className="py-4 text-right">
+                        <span className={`text-[9px] font-black px-2.5 py-0.5 rounded ${
+                          d.riskLevel === 'High' ? 'bg-rose-50 text-rose-600' :
+                          d.riskLevel === 'Medium' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
+                        }`}>
+                          {d.riskLevel}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          </div>
 
-            <div className="border-t border-slate-100 pt-4 flex justify-between items-center text-xs font-bold text-slate-400">
-              <span>Showing 3 of 12 active incidents</span>
-              <button className="text-slate-800 hover:text-slate-950 font-extrabold">View All Incidents</button>
+          {/* License Compliance (Right 4 cols) */}
+          <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">
+            <h3 className="font-outfit font-extrabold text-slate-900 text-sm">License Compliance Center</h3>
+            <div className="space-y-3.5 text-xs font-semibold">
+              {licenses.map((lic, idx) => (
+                <div key={idx} className={`border rounded-xl p-3 flex gap-2.5 items-start ${
+                  lic.status === 'Expired' ? 'border-rose-100 bg-rose-50/50' :
+                  lic.status === 'Expiring Soon' ? 'border-amber-100 bg-amber-50/50' : 'border-slate-100 bg-slate-50/30'
+                }`}>
+                  <span className="text-base">📄</span>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-slate-900 font-bold">{lic.driver}</h4>
+                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${
+                        lic.status === 'Expired' ? 'bg-rose-100 text-rose-700' :
+                        lic.status === 'Expiring Soon' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+                      }`}>{lic.status}</span>
+                    </div>
+                    <p className="text-[9px] text-slate-400 mt-1 font-medium">{lic.licenseClass} • Expiry: {lic.expiryDate}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
         </section>
 
-        {/* Lower Row (AI Safety Insights, Pending Complaints, Risk Score Trends) */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Safety Analytics Charts */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
-          {/* AI Safety Insights (Left 4 cols) */}
-          <div className="lg:col-span-4 bg-[#1E293B] text-slate-100 rounded-2xl p-6 shadow-md flex flex-col justify-between min-h-[220px]">
-            <div>
-              <h3 className="font-outfit font-extrabold text-slate-200 text-sm flex items-center gap-2 mb-4">
-                <SparklesIcon className="w-4.5 h-4.5 text-indigo-400 animate-pulse" />
-                AI Safety Insights
-              </h3>
-              
-              <div className="space-y-4">
-                <div className="flex gap-3 items-start">
-                  <span className="text-xs mt-0.5">📈</span>
-                  <p className="text-xs text-slate-300 font-semibold leading-relaxed">
-                    Driver Alex risk score increased by 12% following late-night shifts.
-                  </p>
+          {/* Chart 1: Monthly Incidents */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-4">Monthly Safety Incidents</span>
+            <div className="h-64 font-inter text-xs">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyIncidentsData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                  <XAxis dataKey="month" tickLine={false} />
+                  <YAxis tickLine={false} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="Speeding" fill="#EF4444" stackId="a" />
+                  <Bar dataKey="Braking" fill="#F59E0B" stackId="a" />
+                  <Bar dataKey="Safety" fill="#1E293B" stackId="a" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Chart 2: Safety Score Trends */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-4">Safety Score Trends</span>
+            <div className="h-64 font-inter text-xs">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={safetyScoreTrend}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                  <XAxis dataKey="week" tickLine={false} />
+                  <YAxis domain={[80, 100]} tickLine={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="score" stroke="#10B981" strokeWidth={3} activeDot={{ r: 8 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+        </section>
+
+        {/* Alert Center & Timeline Activity */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* Alert Center (Left 8 cols) */}
+          <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">
+            <h3 className="font-outfit font-extrabold text-slate-900 text-sm">Compliance Alert Center</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
+              <div className="border border-rose-100 bg-rose-50/50 rounded-xl p-3 flex gap-2.5">
+                <span className="text-rose-500 shrink-0 text-base">⚠️</span>
+                <div>
+                  <h4 className="text-slate-900 font-bold">Unlicensed Driving Warning</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Attempted route assignment blocked for John Doe (Expired Class A license).</p>
                 </div>
-                <div className="flex gap-3 items-start">
-                  <span className="text-xs mt-0.5">⚠️</span>
-                  <p className="text-xs text-slate-300 font-semibold leading-relaxed">
-                    Driver John's license expires in 7 days. Action required.
-                  </p>
+              </div>
+
+              <div className="border border-rose-100 bg-rose-50/50 rounded-xl p-3 flex gap-2.5">
+                <span className="text-rose-500 shrink-0 text-base">⚠️</span>
+                <div>
+                  <h4 className="text-slate-900 font-bold">High Risk Profile Alert</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">David Miller is currently high risk. Safety index is under audit.</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Pending Complaints (Middle 4 cols) */}
-          <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col justify-between min-h-[220px]">
-            <div>
-              <h3 className="font-outfit font-extrabold text-slate-900 text-sm mb-4">Pending Complaints</h3>
-              
-              <div className="border border-slate-100 rounded-xl p-4 bg-slate-50/50 relative">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center font-bold text-xs">
-                      👤
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-black text-slate-800">#CP-802: Behavior</h4>
-                      <p className="text-[10px] text-slate-400 font-bold mt-0.5">Robert Jenkins • Priority: High</p>
-                    </div>
-                  </div>
-                  <span className="bg-rose-50 text-rose-600 text-[8px] font-black px-2 py-0.5 rounded-full border border-rose-100">
-                    OPEN
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Risk Score Trends (Right 4 cols) */}
+          {/* Activity Feed (Right 4 cols) */}
           <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">
-            <h3 className="font-outfit font-extrabold text-slate-900 text-sm">Risk Score Trends</h3>
-            
-            <div className="space-y-4">
-              {/* High Risk */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[11px] font-bold text-slate-700">
-                  <span>High Risk Drivers</span>
-                  <span className="text-rose-500 font-extrabold">3.2% ▲</span>
+            <h3 className="font-outfit font-extrabold text-slate-900 text-sm">Compliance Activity Log</h3>
+            <div className="space-y-4 text-[10px] font-bold text-slate-500 pl-3 relative border-l border-slate-200/60">
+              {activityFeed.map((log, idx) => (
+                <div key={idx} className="relative pl-3">
+                  <span className="absolute -left-[16px] top-1 w-1.5 h-1.5 rounded-full bg-rose-500" />
+                  <span>{log}</span>
                 </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-rose-500 rounded-full" style={{ width: '15%' }}></div>
-                </div>
-              </div>
-
-              {/* Medium Risk */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[11px] font-bold text-slate-700">
-                  <span>Medium Risk Drivers</span>
-                  <span className="text-amber-500 font-extrabold">9.8% ↔</span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-amber-500 rounded-full" style={{ width: '35%' }}></div>
-                </div>
-              </div>
-
-              {/* Low Risk */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[11px] font-bold text-slate-700">
-                  <span>Low Risk Drivers</span>
-                  <span className="text-emerald-500 font-extrabold">87.0% ▼</span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: '87%' }}></div>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -339,21 +623,3 @@ export const SafetyCenter: React.FC = () => {
     </DashboardLayout>
   );
 };
-
-// Local Sparkles Icon Proxy
-const SparklesIcon: React.FC<any> = (props) => (
-  <svg 
-    xmlns="http://www.w3.org/2000/svg" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    {...props}
-  >
-    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-    <path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z" />
-    <path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z" />
-  </svg>
-);

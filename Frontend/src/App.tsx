@@ -8,6 +8,7 @@ import { SafetyCenter } from './pages/SafetyCenter';
 import { FinanceCenter } from './pages/FinanceCenter';
 import { AIIntelligence } from './pages/AIIntelligence';
 import { Administration } from './pages/Administration';
+import { DispatcherDashboard } from './pages/DispatcherDashboard';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Route path="/finance" element={<FinanceCenter />} />
         <Route path="/ai" element={<AIIntelligence />} />
         <Route path="/admin" element={<Administration />} />
+        <Route path="/dispatcher" element={<DispatcherDashboard />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
